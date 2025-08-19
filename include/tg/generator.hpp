@@ -12,6 +12,12 @@ struct Heightmap {
     size_t height;
 };
 
+Heightmap generateFlatHeightmap(size_t width, size_t height, uint16_t value = 32768);
+
+Heightmap generateRandomHeightmap(size_t width, size_t height);
+
+Heightmap generatePerlinNoiseHeightmap(size_t width, size_t height);
+
 void exportHeightmapAsR16(Heightmap& heightmap, const std::string& filepath);
 
 void exportHeightmapAsObj(Heightmap& heightmap, const std::string& filepath);
