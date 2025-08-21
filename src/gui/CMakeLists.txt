@@ -13,4 +13,6 @@ target_link_libraries(terrainGen-gui PRIVATE
     terrainGenCore
     ${Vulkan_LIBRARIES}
     SDL3::SDL3
+    vk-bootstrap::vk-bootstrap
+    imgui
 )
