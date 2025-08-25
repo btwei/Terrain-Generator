@@ -23,6 +23,9 @@ private:
     struct DataPerFrame {
         VkCommandPool _commandPool;
         VkCommandBuffer _mainCommandBuffer;
+
+        VkFence renderFence;
+        VkSemaphore imageAcquireToRenderSemaphore;
     };
 
     SDL_Window* _window;
@@ -38,7 +41,7 @@ private:
     uint32_t _graphicsQueueFamily;
     VkQueue _graphicsQueue;
     
-    VkQueue presentQueue;
+    VkQueue _presentQueue;
 
     VkSwapchainKHR _swapchain;
     VkFormat _swapchainImageFormat;
@@ -54,6 +57,8 @@ private:
     void initVulkan();
     void createSwapchain();
     void destroySwapchain();
+    void initGUI();
+    void recordMainCommands(VkCommandBuffer& commandBuffer, int imageIndex);
 
     DataPerFrame& getCurrentFrame() { return _frames[_frameCount % NUM_FRAME_OVERLAP]; }
 
