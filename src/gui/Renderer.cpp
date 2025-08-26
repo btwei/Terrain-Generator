@@ -116,7 +116,13 @@ void Renderer::render() {
     presentInfo.pImageIndices = &imageIndex;
 
     // @todo: Does vkbootstrap initialize the presentQueue to be exclusive or concurrent? Potential issue. Will test later.
-    if(vkQueuePresentKHR(_presentQueue, &presentInfo) != VK_SUCCESS) {
+    VkResult presentResult = vkQueuePresentKHR(_presentQueue, &presentInfo);
+
+    if(presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
+        vkDeviceWaitIdle(_device);
+        destroySwapchain();
+        createSwapchain();
+    } else if(presentResult != VK_SUCCESS) {
         throw std::runtime_error("Failed to present swapchain image!");
     }
 
