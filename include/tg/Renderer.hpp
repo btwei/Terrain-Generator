@@ -26,6 +26,16 @@ private:
 
         VkFence renderFence;
         VkSemaphore imageAcquireToRenderSemaphore;
+
+        VkImage mainViewportImage;
+        VkImageView mainViewportImageView;
+        VkDeviceMemory mainViewportImageMemory;
+
+        VkImage mainViewportDepthImage;
+        VkImageView mainViewportDepthImageView;
+        VkDeviceMemory mainViewportDepthImageMemory;
+
+        VkDescriptorSet mainViewportDescriptorSet;
     };
 
     SDL_Window* _window;
@@ -54,14 +64,21 @@ private:
     DataPerFrame _frames[NUM_FRAME_OVERLAP];
     std::vector<VkSemaphore> _renderToPresentSemaphores;
 
+    // @todo: Abstract into multiple functions. For now I'm leaving it a bit more verbose for flexibility.
+    // I didn't want to abstract too early and make it hard to change things later.
     void initVulkan();
     void createSwapchain();
     void destroySwapchain();
+    void createViewportResources();
+    void destroyViewportResources();
     void initGUI();
     void recordMainCommands(VkCommandBuffer& commandBuffer, int imageIndex);
 
     DataPerFrame& getCurrentFrame() { return _frames[_frameCount % NUM_FRAME_OVERLAP]; }
 
+    int selectedSize = 512;
+    int selectedMethod = 0;
+    const char* methodNames[3] = { "Perlin Noise", "Diamond-Square", "Fault Formation" };
 };
 
 } // namespace tg

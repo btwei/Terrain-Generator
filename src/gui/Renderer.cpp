@@ -36,7 +36,46 @@ void Renderer::update() {
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::ShowDemoWindow();
+    ImGuiWindowFlags panelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar;
+
+    ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x * 0.35, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
+
+    ImGui::Begin("Left Panel", nullptr, panelFlags);
+        ImGui::Text("Terrain Generation Settings");
+        ImGui::Separator();
+
+        ImGui::InputInt("Size", &selectedSize);
+
+        if(ImGui::BeginCombo("Method", methodNames[selectedMethod])) {
+            for(int i=0; i < 3; i++) {
+                bool isSelected = (selectedMethod == i);
+                if(ImGui::Selectable(methodNames[i], isSelected)) {
+                    selectedMethod = i;
+                }
+                if(isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        if(selectedMethod == 0) {
+
+        } else if(selectedMethod == 1) {
+
+        } else if(selectedMethod == 2) {
+
+        }
+        
+    ImGui::End();
+
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.35, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x * 0.65, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
+
+    ImGui::Begin("Main Viewport", nullptr, panelFlags);
+        ImGui::Text("Demo text!");
+    ImGui::End();
 }
 
 // @todo: Move some of these functions to a separate helper function header + implementation file
@@ -204,7 +243,13 @@ void Renderer::initVulkan() {
 
     _presentQueue = vkbDevice.get_queue(vkb::QueueType::present).value();
 
-     // Create command pools, command buffers, fences, semaphores for each frame
+    // @todo: create a descriptor pool
+
+    // @todo: create a sampler
+
+    // @todo: create a graphics pipeline layout, and graphics pipeline
+
+    // Create command pools, command buffers, fences, semaphores for each frame
 
     for(int i=0; i < NUM_FRAME_OVERLAP; i++) {
         VkCommandPoolCreateInfo commandPoolCreateInfo{};
@@ -281,6 +326,114 @@ void Renderer::destroySwapchain() {
     for(int i=0; i < _swapchainImageViews.size(); i++) {
         vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
     }
+}
+
+/**
+ * @note requires _swapchainExtent to be set first
+ */
+void Renderer::createViewportResources() {
+    for(int i=0; i < NUM_FRAME_OVERLAP; i++) {
+        // Create the color attachment image for the main viewport
+        VkImageCreateInfo imageCreateInfo{};
+        imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageCreateInfo.format = VK_FORMAT_B8G8R8A8_UNORM;
+        imageCreateInfo.extent.width = _swapchainExtent.width * 0.65;
+        imageCreateInfo.extent.height = _swapchainExtent.height;
+        imageCreateInfo.extent.depth = 1;
+        imageCreateInfo.mipLevels = 1;
+        imageCreateInfo.arrayLayers = 1;
+        imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageCreateInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        if(vkCreateImage(_device, &imageCreateInfo, nullptr, &_frames[i].mainViewportImage) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create main viewport color attachment image!");
+        }
+
+        VkMemoryRequirements memRequirements;
+        vkGetImageMemoryRequirements(_device, _frames[i].mainViewportImage, &memRequirements);
+
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(_physicalDevice, &memProperties);
+
+        uint32_t deviceLocalMemoryTypeIndex = 0;
+        for(uint32_t i=0; i < memProperties.memoryTypeCount; i++) {
+            if(memRequirements.memoryTypeBits & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+                deviceLocalMemoryTypeIndex = i;
+                break;
+            }
+        }
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = deviceLocalMemoryTypeIndex;
+
+        if(vkAllocateMemory(_device, &allocInfo, nullptr, &_frames[i].mainViewportImageMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate main viewport color attachment image memory!");
+        }
+
+        vkBindImageMemory(_device, _frames[i].mainViewportImage, _frames[i].mainViewportImageMemory, 0);
+
+        VkImageViewCreateInfo imageViewCreateInfo{};
+        imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        imageViewCreateInfo.image = _frames[i].mainViewportImage;
+        imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewCreateInfo.format = VK_FORMAT_B8G8R8A8_UNORM;
+        imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+        imageViewCreateInfo.subresourceRange.levelCount = 1;
+        imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+        imageViewCreateInfo.subresourceRange.layerCount = 1;
+
+        if(vkCreateImageView(_device, &imageViewCreateInfo, nullptr, &_frames[i].mainViewportImageView) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create main viewport color attachment image view!");
+        }
+
+        // Create the depth attachment image for the main viewport
+
+        imageCreateInfo.format = VK_FORMAT_D32_SFLOAT;
+        imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        if(vkCreateImage(_device, &imageCreateInfo, nullptr, &_frames[i].mainViewportDepthImage) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create main viewport depth attachment image!");
+        }
+
+        vkGetImageMemoryRequirements(_device, _frames[i].mainViewportDepthImage, &memRequirements);
+
+        for(uint32_t i=0; i < memProperties.memoryTypeCount; i++) {
+            if(memRequirements.memoryTypeBits & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+                deviceLocalMemoryTypeIndex = i;
+                break;
+            }
+        }
+
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = deviceLocalMemoryTypeIndex;
+
+        if(vkAllocateMemory(_device, &allocInfo, nullptr, &_frames[i].mainViewportDepthImageMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate main viewport depth attachment image memory!");
+        }
+
+        vkBindImageMemory(_device, _frames[i].mainViewportDepthImage, _frames[i].mainViewportDepthImageMemory, 0);
+
+        imageViewCreateInfo.image = _frames[i].mainViewportDepthImage;
+        imageViewCreateInfo.format = VK_FORMAT_D32_SFLOAT;
+        imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+        if(vkCreateImageView(_device, &imageViewCreateInfo, nullptr, &_frames[i].mainViewportDepthImageView) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create main viewport depth attachment image view!");
+        }
+
+        // Create descriptor set for sampling from the color attachment in shaders
+
+    }
+}
+
+void Renderer::destroyViewportResources() {
+
 }
 
 void Renderer::initGUI() {
