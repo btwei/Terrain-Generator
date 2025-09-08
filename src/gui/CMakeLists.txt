@@ -15,4 +15,5 @@ target_link_libraries(terrainGen-gui PRIVATE
     SDL3::SDL3
     vk-bootstrap::vk-bootstrap
     imgui
+    VulkanMemoryAllocator
 )

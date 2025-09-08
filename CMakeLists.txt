@@ -29,6 +29,10 @@ add_library(imgui STATIC ${IMGUI_SOURCES})
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 target_link_libraries(imgui PRIVATE SDL3::SDL3)
 
+# Add Vulkan Memory Allocator as a library
+add_library(VulkanMemoryAllocator INTERFACE)
+target_include_directories(VulkanMemoryAllocator INTERFACE ${CMAKE_SOURCE_DIR}/external/VulkanMemoryAllocator/include)
+
 add_subdirectory(src/core)
 add_subdirectory(src/cli)
 add_subdirectory(src/gui)
