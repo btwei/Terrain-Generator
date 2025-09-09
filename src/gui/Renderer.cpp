@@ -7,15 +7,16 @@
 #include <SDL3/SDL_vulkan.h>
 #include <VkBootstrap.h>
 
-namespace tg
-{
+namespace tg {
 
 void Renderer::init(SDL_Window* window) {
     _window = window;
 
     initVulkan();
     createSwapchain();
+    createViewportResources();
     initGUI();
+    initDefaultGeometry();
 }
 
 void Renderer::handleEvent(const SDL_Event& event) {
@@ -39,7 +40,7 @@ void Renderer::update() {
     ImGuiWindowFlags panelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar;
 
     ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x * 0.35, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2((ImGui::GetIO().DisplaySize.x * ImGui::GetIO().DisplayFramebufferScale.x - _mainViewportWidth) / ImGui::GetIO().DisplayFramebufferScale.x, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
 
     ImGui::Begin("Left Panel", nullptr, panelFlags);
         ImGui::Text("Terrain Generation Settings");
@@ -70,8 +71,8 @@ void Renderer::update() {
         
     ImGui::End();
 
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x * 0.35, 0), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x * 0.65, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2((ImGui::GetIO().DisplaySize.x * ImGui::GetIO().DisplayFramebufferScale.x - _mainViewportWidth) / ImGui::GetIO().DisplayFramebufferScale.x, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(_mainViewportWidth / ImGui::GetIO().DisplayFramebufferScale.x, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
 
     ImGui::Begin("Main Viewport", nullptr, panelFlags);
         ImGui::Text("Demo text!");
@@ -91,6 +92,8 @@ void Renderer::render() {
         vkDeviceWaitIdle(_device);
         destroySwapchain();
         createSwapchain();
+        destroyViewportResources();
+        createViewportResources();
         return;
     } else if(acquireImageResult != VK_SUCCESS && acquireImageResult != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("Failed to acquire swapchain image!");
@@ -161,6 +164,8 @@ void Renderer::render() {
         vkDeviceWaitIdle(_device);
         destroySwapchain();
         createSwapchain();
+        destroyViewportResources();
+        createViewportResources();
     } else if(presentResult != VK_SUCCESS) {
         throw std::runtime_error("Failed to present swapchain image!");
     }
@@ -170,6 +175,11 @@ void Renderer::render() {
 
 void Renderer::cleanup() {
     vkDeviceWaitIdle(_device);
+
+    // Cleanup VMA
+    vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.allocation);
+    vmaDestroyBuffer(_allocator, _indexBuffer.buffer, _indexBuffer.allocation);
+    vmaDestroyAllocator(_allocator);
 
     // Cleanup ImGui
     ImGui_ImplVulkan_Shutdown();
@@ -186,7 +196,10 @@ void Renderer::cleanup() {
         vkDestroySemaphore(_device, _renderToPresentSemaphores[i], nullptr);
     }
 
+    destroyViewportResources();
     destroySwapchain();
+
+    vkDestroyCommandPool(_device, _commandPool, nullptr);
 
     vkDestroySurfaceKHR(_instance, _surface, nullptr);
     vkDestroyDevice(_device, nullptr);
@@ -215,10 +228,10 @@ void Renderer::initVulkan() {
     _instance = vkbInstance.instance;
     _debugMessenger = vkbInstance.debug_messenger;
 
+    // Create a surface
     SDL_Vulkan_CreateSurface(_window, _instance, nullptr, &_surface);
 
-    // Now I want to select a physical device and create a logical device
-    // And for now, I want dynamic rendering and sync2, maybe more later
+    // Select a Physical device; create a logical device and queues
     VkPhysicalDeviceVulkan13Features physicalDeviceVulkan13Features{};
     physicalDeviceVulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     physicalDeviceVulkan13Features.dynamicRendering = VK_TRUE;
@@ -243,14 +256,49 @@ void Renderer::initVulkan() {
 
     _presentQueue = vkbDevice.get_queue(vkb::QueueType::present).value();
 
-    // @todo: create a descriptor pool
+    // Create General Command Pool
+    VkCommandPoolCreateInfo commandPoolCreateInfo{};
+    commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    commandPoolCreateInfo.queueFamilyIndex = _graphicsQueueFamily;
+    commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+    if(vkCreateCommandPool(_device, &commandPoolCreateInfo, nullptr, &_commandPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create command pool!");
+    }
+
+    // Initialize VMA
+    VmaAllocatorCreateInfo allocatorInfo{};
+    allocatorInfo.physicalDevice = _physicalDevice;
+    allocatorInfo.device = _device;
+    allocatorInfo.instance = _instance;
+
+    vmaCreateAllocator(&allocatorInfo, &_allocator);
+
+    VkDescriptorSetLayoutBinding combinedSamplerBinding{};
+    combinedSamplerBinding.binding = 0;
+    combinedSamplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    combinedSamplerBinding.descriptorCount = 1;
+    combinedSamplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    combinedSamplerBinding.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &combinedSamplerBinding;
+    if(vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_descriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor set layout!");
+    }
+
+    VkDescriptorPoolCreateInfo descriptorPoolCreateInfo{};
+    descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptorPoolCreateInfo.maxSets = 1000;
+    descriptorPoolCreateInfo.poolSizeCount = 2;
 
     // @todo: create a sampler
 
     // @todo: create a graphics pipeline layout, and graphics pipeline
 
     // Create command pools, command buffers, fences, semaphores for each frame
-
     for(int i=0; i < NUM_FRAME_OVERLAP; i++) {
         VkCommandPoolCreateInfo commandPoolCreateInfo{};
         commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -329,9 +377,12 @@ void Renderer::destroySwapchain() {
 }
 
 /**
+ * @brief Creates Viewport image resources for each frame in flight
  * @note requires _swapchainExtent to be set first
  */
 void Renderer::createViewportResources() {
+    _mainViewportWidth = static_cast<float>(_swapchainExtent.width) * 0.65f;
+
     for(int i=0; i < NUM_FRAME_OVERLAP; i++) {
         // Create the color attachment image for the main viewport
         VkImageCreateInfo imageCreateInfo{};
@@ -433,7 +484,15 @@ void Renderer::createViewportResources() {
 }
 
 void Renderer::destroyViewportResources() {
+    for(int i=0; i < NUM_FRAME_OVERLAP; i++) {
+        vkDestroyImageView(_device, _frames[i].mainViewportImageView, nullptr);
+        vkDestroyImage(_device, _frames[i].mainViewportImage, nullptr);
+        vkFreeMemory(_device, _frames[i].mainViewportImageMemory, nullptr);
 
+        vkDestroyImageView(_device, _frames[i].mainViewportDepthImageView, nullptr);
+        vkDestroyImage(_device, _frames[i].mainViewportDepthImage, nullptr);
+        vkFreeMemory(_device, _frames[i].mainViewportDepthImageMemory, nullptr);
+    }
 }
 
 void Renderer::initGUI() {
@@ -482,6 +541,18 @@ void Renderer::initGUI() {
     init_info.MinAllocationSize = 1024*1024;
 
     ImGui_ImplVulkan_Init(&init_info);
+}
+
+void Renderer::initDefaultGeometry() {
+    _currentHeightmap = generateFlatHeightmap(512, 512);
+    Mesh mesh = convertHeightmapToMesh(_currentHeightmap);
+
+    _vertexBuffer = uploadToNewDeviceLocalBuffer(mesh.interleavedAttributes.size() * sizeof(Attributes), mesh.interleavedAttributes.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+    _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+}
+
+void Renderer::generateUserGeometry() {
+
 }
 
 void Renderer::recordMainCommands(VkCommandBuffer& commandBuffer, int imageIndex) {
@@ -568,6 +639,82 @@ void Renderer::recordMainCommands(VkCommandBuffer& commandBuffer, int imageIndex
         0, nullptr,
         1, &barrierFromColorAttachmentToPresent);
 
+}
+
+Renderer::Buffer Renderer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags flags) {
+    Buffer buf;
+
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    allocInfo.flags = flags;
+
+    if(vmaCreateBuffer(_allocator, &bufferInfo, &allocInfo, &buf.buffer, &buf.allocation, nullptr) != VK_SUCCESS){
+        throw std::runtime_error("Failed to create VMA buffer!");
+    }
+
+    return buf;
+}
+
+Renderer::Buffer Renderer::uploadToNewDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags usage) {
+    Buffer stagingBuffer = createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+    void* hostMemPtr;
+    vmaMapMemory(_allocator, stagingBuffer.allocation, &hostMemPtr);
+    memcpy(hostMemPtr, data, (size_t)size);
+    vmaUnmapMemory(_allocator, stagingBuffer.allocation);
+
+    Buffer deviceLocalBuffer = createBuffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, 0);
+
+    // Copy from host visible to device local buffer
+    VkFence copyFence;
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    
+    if(vkCreateFence(_device, &fenceInfo, nullptr, &copyFence) != VK_SUCCESS) throw std::runtime_error("Failed to create temp fence!");
+
+    VkCommandBuffer buf;
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo{};
+    commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandBufferAllocateInfo.commandPool = _commandPool;
+    commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandBufferAllocateInfo.commandBufferCount = 1;
+
+    if(vkAllocateCommandBuffers(_device, &commandBufferAllocateInfo, &buf) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate command buffer!");
+    }
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+    vkBeginCommandBuffer(buf, &beginInfo);
+
+        VkBufferCopy copyRegion{};
+        copyRegion.size = size;
+        vkCmdCopyBuffer(buf, stagingBuffer.buffer, deviceLocalBuffer.buffer, 1, &copyRegion);
+
+    vkEndCommandBuffer(buf);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &buf;
+
+    vkQueueSubmit(_graphicsQueue, 1, &submitInfo, copyFence);
+
+    vkWaitForFences(_device, 1, &copyFence, VK_TRUE, UINT64_MAX);
+
+    vkFreeCommandBuffers(_device, _commandPool, 1, &buf);
+    vkDestroyFence(_device, copyFence, nullptr);
+
+    vmaDestroyBuffer(_allocator, stagingBuffer.buffer, stagingBuffer.allocation);
+
+    return deviceLocalBuffer;
 }
 
 } // namespace tg

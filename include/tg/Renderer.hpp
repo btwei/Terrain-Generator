@@ -4,12 +4,19 @@
 #include <vector>
 
 #include <SDL3/SDL.h>
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
+
+#include "tg/generator.hpp"
 
 namespace tg {
 
 constexpr unsigned int NUM_FRAME_OVERLAP = 2;
 
+/**
+ * @class Renderer
+ * @brief Manages Vulkan rendering for the application, including swapchain, command buffers, and GUI integration.
+ */
 class Renderer {
 public:
     void init(SDL_Window* window);
@@ -38,6 +45,11 @@ private:
         VkDescriptorSet mainViewportDescriptorSet;
     };
 
+    struct Buffer {
+        VkBuffer buffer;
+        VmaAllocation allocation;
+    };
+
     SDL_Window* _window;
     bool _isRunning = true;
 
@@ -50,8 +62,13 @@ private:
     VkDevice _device;
     uint32_t _graphicsQueueFamily;
     VkQueue _graphicsQueue;
-    
     VkQueue _presentQueue;
+
+    VkCommandPool _commandPool;
+
+    VmaAllocator _allocator;
+    Buffer _vertexBuffer;
+    Buffer _indexBuffer;
 
     VkSwapchainKHR _swapchain;
     VkFormat _swapchainImageFormat;
@@ -60,19 +77,28 @@ private:
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
 
+    VkDescriptorSetLayout _descriptorSetLayout;
+    VkDescriptorPool _descriptorPool;
+
+    uint32_t _mainViewportWidth;
+    Heightmap _currentHeightmap;
+
     uint32_t _frameCount = 0;
     DataPerFrame _frames[NUM_FRAME_OVERLAP];
     std::vector<VkSemaphore> _renderToPresentSemaphores;
 
-    // @todo: Abstract into multiple functions. For now I'm leaving it a bit more verbose for flexibility.
-    // I didn't want to abstract too early and make it hard to change things later.
     void initVulkan();
     void createSwapchain();
     void destroySwapchain();
     void createViewportResources();
     void destroyViewportResources();
     void initGUI();
+    void initDefaultGeometry();
+    void generateUserGeometry();
     void recordMainCommands(VkCommandBuffer& commandBuffer, int imageIndex);
+
+    Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags flags);
+    Buffer uploadToNewDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags usage);
 
     DataPerFrame& getCurrentFrame() { return _frames[_frameCount % NUM_FRAME_OVERLAP]; }
 
