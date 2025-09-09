@@ -40,6 +40,82 @@ Heightmap generatePerlinNoiseHeightmap(size_t width, size_t height) {
     return heights;
 }
 
+Mesh convertHeightmapToMesh(const Heightmap& heightmap) {
+    Mesh mesh;
+
+    size_t width = heightmap.width;
+    size_t height = heightmap.height;
+
+    std::vector<float> positions;
+    std::vector<float> normals;
+    std::vector<float> uvs;
+
+    // Generate Vertices
+    for(size_t y=0; y < height; y++) {
+        for(size_t x=0; x < width; x++) {
+            positions.push_back(x);
+            positions.push_back(y);
+            positions.push_back(heightmap.data[y*height + x]);
+
+            uvs.push_back(x / width);
+            uvs.push_back(y / height);
+        }
+    }
+
+    // Generate Indices
+    for(size_t y=0; y < height - 1; y++) {
+        for(size_t x=0; x < width - 1; x++) {
+            uint32_t topLeft = y*height + x;
+            uint32_t topRight = topLeft + 1;
+            uint32_t bottomLeft = y*(height+1) + x;
+            uint32_t bottomRight = bottomLeft + 1;
+
+            mesh.indices.push_back(topLeft);
+            mesh.indices.push_back(bottomLeft);
+            mesh.indices.push_back(topRight);
+
+            mesh.indices.push_back(topRight);
+            mesh.indices.push_back(bottomLeft);
+            mesh.indices.push_back(bottomRight);
+        }
+    }
+
+    // Compute Normals
+    for(size_t y=0; y < height - 1; y++) {
+        for(size_t x=0; x < width - 1; x++) {
+            // Calculate dx and dy, minding heightmap boundary conditions
+            float dx = (x == 0) ? heightmap.data[y*height+x+1] - heightmap.data[y*height+x]
+                     : (x == width - 1) ? heightmap.data[y*height+x] - heightmap.data[y*height+x-1]
+                     : (heightmap.data[y*height+x+1] - heightmap.data[y*height+x-1]) * 0.5;
+            float dy = (y == 0) ? heightmap.data[(y+1)*height+x] - heightmap.data[y*height+x]
+                     : (y == height - 1) ? heightmap.data[y*height+x] - heightmap.data[(y-1)*height+x]
+                     : (heightmap.data[(y+1)*height+x] - heightmap.data[(y-1)*height+x]) * 0.5;
+
+            float magnitude = dx*dx + dy*dy + 1;
+
+            normals.push_back(dx/magnitude);
+            normals.push_back(-1.0f/magnitude);
+            normals.push_back(dy/magnitude);
+        }
+    }
+
+    // Combine into interleaved array
+    for(size_t i = 0; i < width*height; i++) {
+        float x = positions[3*i];
+        float y = positions[3*i + 1];
+        float z = positions[3*i + 2];
+        float n_x = normals[3*i];
+        float n_y = normals[3*i + 1];
+        float n_z = normals[3*i + 2];
+        float u = uvs[2*i];
+        float v = uvs[2*i + 1];
+
+        mesh.interleavedAttributes.push_back({x, y, z, n_x, n_y, n_z, u, v});
+    }
+
+    return mesh;
+}
+
 void exportHeightmapAsR16(Heightmap& heightmap, const std::string& filepath) {
     std::ofstream file(filepath, std::ios::binary);
     if(!file) {
