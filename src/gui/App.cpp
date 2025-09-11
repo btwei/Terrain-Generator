@@ -1,9 +1,8 @@
 #include "tg/App.hpp"
 
-namespace tg
-{
+namespace tg {
 
-App::App(int, char*[]) { }
+App::App(int argc, char* argv[]) : argc(argc), argv(argv) { }
 
 App::~App() { }
 
@@ -20,7 +19,7 @@ void App::run() {
 	);
 
     // Initialize the renderer
-    _renderer.init(_window);
+    _renderer.init(_window, argv[0]);
 
     // Main application loop
     while (_renderer.isRunning()) {

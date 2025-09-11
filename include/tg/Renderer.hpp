@@ -19,7 +19,7 @@ constexpr unsigned int NUM_FRAME_OVERLAP = 2;
  */
 class Renderer {
 public:
-    void init(SDL_Window* window);
+    void init(SDL_Window* window, char* argv0);
     bool isRunning() const { return _isRunning; }
     void handleEvent(const SDL_Event& event);
     void update();
@@ -41,8 +41,6 @@ private:
         VkImage mainViewportDepthImage;
         VkImageView mainViewportDepthImageView;
         VkDeviceMemory mainViewportDepthImageMemory;
-
-        VkDescriptorSet mainViewportDescriptorSet;
     };
 
     struct Buffer {
@@ -52,6 +50,7 @@ private:
 
     SDL_Window* _window;
     bool _isRunning = true;
+    char* executablePath = nullptr;
 
     VkInstance _instance;
     VkDebugUtilsMessengerEXT _debugMessenger;
@@ -65,6 +64,11 @@ private:
     VkQueue _presentQueue;
 
     VkCommandPool _commandPool;
+    VkDescriptorSetLayout _descriptorSetLayout;
+    VkDescriptorPool _descriptorPool;
+
+    VkPipelineLayout _pipelineLayout;
+    VkPipeline _graphicsPipeline;
 
     VmaAllocator _allocator;
     Buffer _vertexBuffer;
@@ -76,9 +80,6 @@ private:
 
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
-
-    VkDescriptorSetLayout _descriptorSetLayout;
-    VkDescriptorPool _descriptorPool;
 
     uint32_t _mainViewportWidth;
     Heightmap _currentHeightmap;
@@ -97,6 +98,8 @@ private:
     void generateUserGeometry();
     void recordMainCommands(VkCommandBuffer& commandBuffer, int imageIndex);
 
+    VkShaderModule createShaderModule(const char* filename);
+    void createGraphicsPipeline();
     Buffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationCreateFlags flags);
     Buffer uploadToNewDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags usage);
 

@@ -21,6 +21,9 @@ public:
     void run();
 
 private:
+    int argc;
+    char** argv;
+
     SDL_Window* _window;
     Renderer _renderer;
 
