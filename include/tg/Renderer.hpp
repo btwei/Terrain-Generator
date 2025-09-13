@@ -3,6 +3,9 @@
 
 #include <vector>
 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+
+#include <glm/glm.hpp>
 #include <SDL3/SDL.h>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
@@ -27,6 +30,11 @@ public:
     void cleanup();
 
 private:
+    struct Buffer {
+        VkBuffer buffer;
+        VmaAllocation allocation;
+    };
+
     struct DataPerFrame {
         VkCommandPool _commandPool;
         VkCommandBuffer _mainCommandBuffer;
@@ -41,11 +49,12 @@ private:
         VkImage mainViewportDepthImage;
         VkImageView mainViewportDepthImageView;
         VkDeviceMemory mainViewportDepthImageMemory;
-    };
 
-    struct Buffer {
-        VkBuffer buffer;
-        VmaAllocation allocation;
+        void* uboData;
+        Buffer _uboBuffer;
+        VkDescriptorSet _descriptorSet;
+
+        VkDescriptorSet _GUIdescriptorSet;
     };
 
     SDL_Window* _window;
@@ -54,9 +63,7 @@ private:
 
     VkInstance _instance;
     VkDebugUtilsMessengerEXT _debugMessenger;
-
     VkSurfaceKHR _surface;
-
     VkPhysicalDevice _physicalDevice;
     VkDevice _device;
     uint32_t _graphicsQueueFamily;
@@ -69,6 +76,7 @@ private:
 
     VkPipelineLayout _pipelineLayout;
     VkPipeline _graphicsPipeline;
+    VkSampler _sampler;
 
     VmaAllocator _allocator;
     Buffer _vertexBuffer;
@@ -82,6 +90,7 @@ private:
     std::vector<VkImageView> _swapchainImageViews;
 
     uint32_t _mainViewportWidth;
+    VkExtent2D _mainViewportExtent;
     Heightmap _currentHeightmap;
 
     uint32_t _frameCount = 0;
@@ -108,6 +117,16 @@ private:
     int selectedSize = 512;
     int selectedMethod = 0;
     const char* methodNames[3] = { "Perlin Noise", "Diamond-Square", "Fault Formation" };
+
+    glm::mat4 M_matrix;
+    glm::mat4 V_matrix;
+    glm::mat4 P_matrix;
+
+    glm::vec3 target = glm::vec3(0.0f);
+    float distance = 2.0f;
+    float yaw = glm::radians(45.0f);
+    float pitch = glm::radians(30.0f);
+    glm::vec2 panOffset = glm::vec2(0.0f, 0.0f);
 };
 
 } // namespace tg

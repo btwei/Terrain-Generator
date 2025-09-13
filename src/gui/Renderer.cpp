@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 
+#include <glm/gtc/matrix_transform.hpp>
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
@@ -19,8 +20,8 @@ void Renderer::init(SDL_Window* window, char* argv0) {
 
     initVulkan();
     createSwapchain();
-    createViewportResources();
     initGUI();
+    createViewportResources();
     initDefaultGeometry();
 }
 
@@ -79,9 +80,30 @@ void Renderer::update() {
     ImGui::SetNextWindowPos(ImVec2((ImGui::GetIO().DisplaySize.x * ImGui::GetIO().DisplayFramebufferScale.x - _mainViewportWidth) / ImGui::GetIO().DisplayFramebufferScale.x, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(_mainViewportWidth / ImGui::GetIO().DisplayFramebufferScale.x, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
 
+        panelFlags |= ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::Begin("Main Viewport", nullptr, panelFlags);
-        ImGui::Text("Demo text!");
+        ImGui::Image(getCurrentFrame()._GUIdescriptorSet, ImVec2(_mainViewportExtent.width / ImGui::GetIO().DisplayFramebufferScale.x, _mainViewportExtent.height / ImGui::GetIO().DisplayFramebufferScale.y));
     ImGui::End();
+    ImGui::PopStyleVar();
+
+    glm::vec3 forward;
+    forward.x = cos(pitch) * sin(yaw);
+    forward.y = sin(pitch);
+    forward.z = cos(pitch) * cos(yaw);
+    forward = glm::normalize(forward);
+    
+    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0, 1, 0)));
+    glm::vec3 up = glm::normalize(glm::cross(right, forward));
+
+    target += right * panOffset.x + up * panOffset.y;
+
+    glm::vec3 cameraPos = target - forward * distance;
+    V_matrix = glm::lookAt(cameraPos, target, glm::vec3(0, -1, 0));
+
+    glm::mat4 MVP = P_matrix * V_matrix * M_matrix;
+    memcpy(getCurrentFrame().uboData, &MVP, sizeof(glm::mat4));
 }
 
 // @todo: Move some of these functions to a separate helper function header + implementation file
@@ -192,6 +214,8 @@ void Renderer::cleanup() {
     ImGui::DestroyContext();
 
     for(int i=0; i < NUM_FRAME_OVERLAP; i++) {
+        vmaDestroyBuffer(_allocator, _frames[i]._uboBuffer.buffer, _frames[i]._uboBuffer.allocation);
+        vkFreeDescriptorSets(_device, _descriptorPool, 1, &_frames[i]._descriptorSet);
         vkDestroyCommandPool(_device, _frames[i]._commandPool, nullptr);
         vkDestroyFence(_device, _frames[i].renderFence, nullptr);
         vkDestroySemaphore(_device, _frames[i].imageAcquireToRenderSemaphore, nullptr);
@@ -205,6 +229,7 @@ void Renderer::cleanup() {
     destroySwapchain();
 
     vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
+    vkDestroySampler(_device, _sampler, nullptr);
     vkDestroyPipeline(_device, _graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(_device, _pipelineLayout, nullptr);
     vkDestroyDescriptorSetLayout(_device, _descriptorSetLayout, nullptr);
@@ -310,7 +335,21 @@ void Renderer::initVulkan() {
 
     if(vkCreateDescriptorPool(_device, &descriptorPoolCreateInfo, nullptr, &_descriptorPool) != VK_SUCCESS) throw std::runtime_error("Failed to create descriptor pool!");
 
-    // @todo: create a sampler
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.maxAnisotropy = 0.0f;
+    samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+    if(vkCreateSampler(_device, &samplerInfo, nullptr, &_sampler) != VK_SUCCESS) throw std::runtime_error("Failed to create sampler!");
 
     createGraphicsPipeline();
 
@@ -347,6 +386,34 @@ void Renderer::initVulkan() {
         if(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i].imageAcquireToRenderSemaphore) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create semaphore!");
         }
+
+        // Create descriptor set
+        VkDescriptorSetAllocateInfo descriptorAllocInfo{};
+        descriptorAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        descriptorAllocInfo.descriptorPool = _descriptorPool;
+        descriptorAllocInfo.descriptorSetCount = 1;
+        descriptorAllocInfo.pSetLayouts = &_descriptorSetLayout;
+
+        if(vkAllocateDescriptorSets(_device, &descriptorAllocInfo, &_frames[i]._descriptorSet) != VK_SUCCESS) throw std::runtime_error("Failed to allocate descriptor set!");
+
+        _frames[i]._uboBuffer = createBuffer(sizeof(glm::mat4), VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+        vmaMapMemory(_allocator, _frames[i]._uboBuffer.allocation, &_frames[i].uboData);
+
+        VkDescriptorBufferInfo bufferInfo{};
+        bufferInfo.buffer = _frames[i]._uboBuffer.buffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(glm::mat4);
+
+        VkWriteDescriptorSet writeSet{};
+        writeSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeSet.dstSet = _frames[i]._descriptorSet;
+        writeSet.dstBinding = 0;
+        writeSet.dstArrayElement = 0;
+        writeSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        writeSet.descriptorCount = 1;
+        writeSet.pBufferInfo = &bufferInfo;
+
+        vkUpdateDescriptorSets(_device, 1, &writeSet, 0, nullptr);
     }
 }
 
@@ -397,7 +464,11 @@ void Renderer::destroySwapchain() {
  * @note requires _swapchainExtent to be set first
  */
 void Renderer::createViewportResources() {
-    _mainViewportWidth = static_cast<float>(_swapchainExtent.width) * 0.65f;
+    _mainViewportExtent = VkExtent2D(_swapchainExtent.width * 0.65, _swapchainExtent.height);
+    _mainViewportWidth = static_cast<float>(_swapchainExtent.width) * 0.65f; // @todo: cleanup duplicate variable
+
+    P_matrix = glm::perspective(glm::radians(45.0f), static_cast<float>(_mainViewportExtent.width) / _mainViewportExtent.height, 0.1f, 100.0f);
+    P_matrix[1][1] *= -1;
 
     for(int i=0; i < NUM_FRAME_OVERLAP; i++) {
         // Create the color attachment image for the main viewport
@@ -494,13 +565,78 @@ void Renderer::createViewportResources() {
             throw std::runtime_error("Failed to create main viewport depth attachment image view!");
         }
 
-        // Create descriptor set for sampling from the color attachment in shaders
+        // Transition Depth attachment to depth attachment optimal
+        VkFence copyFence;
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        
+        if(vkCreateFence(_device, &fenceInfo, nullptr, &copyFence) != VK_SUCCESS) throw std::runtime_error("Failed to create temp fence!");
 
+        VkCommandBuffer buf;
+        VkCommandBufferAllocateInfo commandBufferAllocateInfo{};
+        commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        commandBufferAllocateInfo.commandPool = _commandPool;
+        commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        commandBufferAllocateInfo.commandBufferCount = 1;
+
+        if(vkAllocateCommandBuffers(_device, &commandBufferAllocateInfo, &buf) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate command buffer!");
+        }
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+        vkBeginCommandBuffer(buf, &beginInfo);
+
+            VkImageMemoryBarrier viewportBarrierFromUndefinedToDepthAttachment{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = 0,
+            .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = _frames[i].mainViewportDepthImage,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }};
+
+            vkCmdPipelineBarrier(
+                buf,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                0,
+                0, nullptr,
+                0, nullptr,
+                1, &viewportBarrierFromUndefinedToDepthAttachment
+            );
+
+        vkEndCommandBuffer(buf);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &buf;
+
+        vkQueueSubmit(_graphicsQueue, 1, &submitInfo, copyFence);
+
+        vkWaitForFences(_device, 1, &copyFence, VK_TRUE, UINT64_MAX);
+
+        vkFreeCommandBuffers(_device, _commandPool, 1, &buf);
+        vkDestroyFence(_device, copyFence, nullptr);
+
+        _frames[i]._GUIdescriptorSet = ImGui_ImplVulkan_AddTexture(_sampler, _frames[i].mainViewportImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
 }
 
 void Renderer::destroyViewportResources() {
     for(int i=0; i < NUM_FRAME_OVERLAP; i++) {
+        ImGui_ImplVulkan_RemoveTexture(_frames[i]._GUIdescriptorSet);
+
         vkDestroyImageView(_device, _frames[i].mainViewportImageView, nullptr);
         vkDestroyImage(_device, _frames[i].mainViewportImage, nullptr);
         vkFreeMemory(_device, _frames[i].mainViewportImageMemory, nullptr);
@@ -547,7 +683,7 @@ void Renderer::initGUI() {
     init_info.PipelineCache = VK_NULL_HANDLE;
     init_info.Subpass = 0;
 
-    init_info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
+    init_info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE + NUM_FRAME_OVERLAP;
 
     init_info.UseDynamicRendering = true;
     init_info.PipelineRenderingCreateInfo = renderingCreateInfo;
@@ -565,6 +701,18 @@ void Renderer::initDefaultGeometry() {
 
     _vertexBuffer = uploadToNewDeviceLocalBuffer(mesh.interleavedAttributes.size() * sizeof(Attributes), mesh.interleavedAttributes.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
     _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+
+    glm::vec3 translation(-0.5f, -0.5f, -0.5f);
+    
+    // This turns the model to be flat
+    glm::mat4 swapYZ(1.0f);
+    swapYZ[0] = glm::vec4(1, 0, 0, 0);
+    swapYZ[1] = glm::vec4(0, 0, 1, 0);
+    swapYZ[2] = glm::vec4(0, 1, 0, 0);
+
+    // Set the model matrix once; no need to update it later
+    // All models will start from X, Y ∈ [0, 1]
+    M_matrix = glm::translate(glm::mat4(1.0f), translation) * swapYZ;
 }
 
 void Renderer::generateUserGeometry() {
@@ -572,6 +720,122 @@ void Renderer::generateUserGeometry() {
 }
 
 void Renderer::recordMainCommands(VkCommandBuffer& commandBuffer, int imageIndex) {
+    // Render into mainViewport
+    VkImageMemoryBarrier viewportBarrierFromUndefinedToColorAttachment{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = nullptr,
+        .srcAccessMask = 0,
+        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = getCurrentFrame().mainViewportImage,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+    }};
+
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &viewportBarrierFromUndefinedToColorAttachment
+    );
+
+    VkClearValue viewportClearValue{};
+    viewportClearValue.color = { {0.0f, 0.0f, 0.0f, 1.0f} };
+    viewportClearValue.depthStencil.depth = 1.0f;
+
+    VkRenderingAttachmentInfo viewportColorAttachment{};
+    viewportColorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    viewportColorAttachment.imageView = getCurrentFrame().mainViewportImageView;
+    viewportColorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+    viewportColorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    viewportColorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    viewportColorAttachment.clearValue = { {0.0f, 0.0f, 0.0f, 1.0f}};
+
+    VkRenderingAttachmentInfo viewportDepthAttachment{};
+    viewportDepthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    viewportDepthAttachment.imageView = getCurrentFrame().mainViewportDepthImageView;
+    viewportDepthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    viewportDepthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    viewportDepthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    viewportDepthAttachment.clearValue = viewportClearValue;
+
+    VkRenderingInfo viewportRenderingInfo{};
+    viewportRenderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    viewportRenderingInfo.renderArea.offset = {0, 0};
+    viewportRenderingInfo.renderArea.extent = _mainViewportExtent;
+    viewportRenderingInfo.layerCount = 1;
+    viewportRenderingInfo.colorAttachmentCount = 1;
+    viewportRenderingInfo.pColorAttachments = &viewportColorAttachment;
+    viewportRenderingInfo.pDepthAttachment = &viewportDepthAttachment;
+
+    vkCmdBeginRendering(commandBuffer, &viewportRenderingInfo);
+
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _graphicsPipeline);
+
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = (float) _mainViewportExtent.width;
+        viewport.height = (float) _mainViewportExtent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+        VkRect2D scissor{};
+        scissor.offset = {0, 0};
+        scissor.extent = _mainViewportExtent;
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        VkBuffer vertexBuffers[] = {_vertexBuffer.buffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+        vkCmdBindIndexBuffer(commandBuffer, _indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _pipelineLayout, 0, 1, &getCurrentFrame()._descriptorSet, 0, nullptr);
+
+        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>((_currentHeightmap.height - 1) * (_currentHeightmap.width - 1) * 6), 1, 0, 0, 0);
+
+    vkCmdEndRendering(commandBuffer);
+
+    VkImageMemoryBarrier viewportBarrierFromColorAttachmentToShaderOptimal{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = nullptr,
+        .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = getCurrentFrame().mainViewportImage,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+    }};
+
+    // Transition the viewport image to be used during the fragment shader later
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT ,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &viewportBarrierFromColorAttachmentToShaderOptimal);
+
+    // Render DearImGui onto swapchain image
+
     VkImageMemoryBarrier barrierFromUndefinedToColorAttachment{
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             .pNext = nullptr,
@@ -746,7 +1010,7 @@ void Renderer::createGraphicsPipeline() {
     VkPipelineRasterizationStateCreateInfo rasterizationStateInfo{};
     rasterizationStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizationStateInfo.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizationStateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizationStateInfo.cullMode = VK_CULL_MODE_NONE;
     rasterizationStateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizationStateInfo.lineWidth = 1.0f;
 
@@ -767,6 +1031,7 @@ void Renderer::createGraphicsPipeline() {
     
     VkPipelineColorBlendStateCreateInfo colorBlendState{};
     colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlendState.logicOpEnable = VK_FALSE;
     colorBlendState.logicOp = VK_LOGIC_OP_COPY;
     colorBlendState.attachmentCount = 1;
     colorBlendState.pAttachments = &colorBlendAttachment;

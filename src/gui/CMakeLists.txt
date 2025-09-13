@@ -62,4 +62,5 @@ target_link_libraries(terrainGen-gui PRIVATE
     vk-bootstrap::vk-bootstrap
     imgui
     VulkanMemoryAllocator
+    glm
 )

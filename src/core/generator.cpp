@@ -1,5 +1,6 @@
 #include "tg/generator.hpp"
 
+#include <iostream>
 #include <fstream>
 #include <random>
 
@@ -53,12 +54,13 @@ Mesh convertHeightmapToMesh(const Heightmap& heightmap) {
     // Generate Vertices
     for(size_t y=0; y < height; y++) {
         for(size_t x=0; x < width; x++) {
-            positions.push_back(x);
-            positions.push_back(y);
-            positions.push_back(heightmap.data[y*height + x]);
+            positions.push_back(static_cast<float>(x) / width);
+            positions.push_back(static_cast<float>(y) / height);
+            positions.push_back(heightmap.data[y*height + x] / static_cast<float>(UINT16_MAX));
 
-            uvs.push_back(x / width);
-            uvs.push_back(y / height);
+            /* Yes, the position x, y = u, v; it's redundant data, perhaps will remove later */
+            uvs.push_back(static_cast<float>(x) / width);
+            uvs.push_back(static_cast<float>(y) / height);
         }
     }
 
@@ -67,7 +69,7 @@ Mesh convertHeightmapToMesh(const Heightmap& heightmap) {
         for(size_t x=0; x < width - 1; x++) {
             uint32_t topLeft = y*height + x;
             uint32_t topRight = topLeft + 1;
-            uint32_t bottomLeft = y*(height+1) + x;
+            uint32_t bottomLeft = (y+1)*height + x;
             uint32_t bottomRight = bottomLeft + 1;
 
             mesh.indices.push_back(topLeft);
