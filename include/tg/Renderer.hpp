@@ -123,7 +123,7 @@ private:
     glm::mat4 P_matrix;
 
     glm::vec3 target = glm::vec3(0.0f);
-    float distance = 2.0f;
+    float distance = 4.0f;
     float yaw = glm::radians(45.0f);
     float pitch = glm::radians(30.0f);
     glm::vec2 panOffset = glm::vec2(0.0f, 0.0f);

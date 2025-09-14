@@ -80,13 +80,41 @@ void Renderer::update() {
     ImGui::SetNextWindowPos(ImVec2((ImGui::GetIO().DisplaySize.x * ImGui::GetIO().DisplayFramebufferScale.x - _mainViewportWidth) / ImGui::GetIO().DisplayFramebufferScale.x, 0), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(_mainViewportWidth / ImGui::GetIO().DisplayFramebufferScale.x, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
 
-        panelFlags |= ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    panelFlags |= ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
+    bool viewportHovered;
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::Begin("Main Viewport", nullptr, panelFlags);
         ImGui::Image(getCurrentFrame()._GUIdescriptorSet, ImVec2(_mainViewportExtent.width / ImGui::GetIO().DisplayFramebufferScale.x, _mainViewportExtent.height / ImGui::GetIO().DisplayFramebufferScale.y));
+
+        viewportHovered = ImGui::IsWindowHovered();
     ImGui::End();
     ImGui::PopStyleVar();
+
+    if(viewportHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        ImVec2 delta = ImGui::GetIO().MouseDelta;
+
+        float rotation_sensitivity = 0.005f;
+
+        yaw += delta.x * rotation_sensitivity;
+        pitch += delta.y * rotation_sensitivity;
+
+        pitch = glm::clamp(pitch, -glm::half_pi<float>() + 0.01f, glm::half_pi<float>() - 0.01f);
+    }
+
+    if(viewportHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Middle) || viewportHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+        ImVec2 delta = ImGui::GetIO().MouseDelta;
+        float pan_sensitivity = 0.01f;
+
+        panOffset.x += delta.x * pan_sensitivity;
+        panOffset.y -= delta.y * pan_sensitivity;
+    }
+
+    if(viewportHovered) {
+        float zoom_sensitivity = 0.1f;
+        distance -= ImGui::GetIO().MouseWheel * zoom_sensitivity;
+        distance = glm::max(distance, 0.1f);
+    }
 
     glm::vec3 forward;
     forward.x = cos(pitch) * sin(yaw);
@@ -97,7 +125,7 @@ void Renderer::update() {
     glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0, 1, 0)));
     glm::vec3 up = glm::normalize(glm::cross(right, forward));
 
-    target += right * panOffset.x + up * panOffset.y;
+    target = right * panOffset.x + up * panOffset.y;
 
     glm::vec3 cameraPos = target - forward * distance;
     V_matrix = glm::lookAt(cameraPos, target, glm::vec3(0, -1, 0));
