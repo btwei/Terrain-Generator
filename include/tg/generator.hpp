@@ -27,7 +27,7 @@ Heightmap generateFlatHeightmap(size_t width, size_t height, uint16_t value = 32
 
 Heightmap generateRandomHeightmap(size_t width, size_t height);
 
-Heightmap generatePerlinNoiseHeightmap(size_t width, size_t height);
+Heightmap generatePerlinNoiseHeightmap(size_t width, size_t height, size_t gridResolution);
 
 Mesh convertHeightmapToMesh(const Heightmap& heightmap);
 

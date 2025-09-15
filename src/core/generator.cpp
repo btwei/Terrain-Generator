@@ -4,6 +4,9 @@
 #include <fstream>
 #include <random>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+
 namespace tg {
 
 Heightmap generateFlatHeightmap(size_t width, size_t height, uint16_t value) {
@@ -31,12 +34,48 @@ Heightmap generateRandomHeightmap(size_t width, size_t height) {
     return heights;
 }
 
-Heightmap generatePerlinNoiseHeightmap(size_t width, size_t height) {
+Heightmap generatePerlinNoiseHeightmap(size_t width, size_t height, size_t gridResolution) {
     Heightmap heights;
     heights.width = width;
     heights.height = height;
 
-    throw std::runtime_error("Perlin noise generation not implemented yet.");
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    std::vector<std::vector<glm::vec2>> vectorGrid(gridResolution + 1, std::vector<glm::vec2>(gridResolution + 1, glm::vec2()));
+    for(size_t y = 0; y < gridResolution + 1; y++) {
+        for(size_t x = 0; x < gridResolution + 1; x++) {
+            std::uniform_real_distribution<float> dis(0.0f, glm::two_pi<float>());
+            float angle = dis(gen);
+            vectorGrid[x][y] = glm::vec2(std::cos(angle), std::sin(angle));
+        }
+    }
+
+    float cellWidth = static_cast<float>(width) / gridResolution;
+    float cellHeight = static_cast<float>(height) / gridResolution;
+
+    for(size_t y = 0; y < height; y++) {
+        for(size_t x = 0; x < width; x++) {
+            size_t cellX = floor(x / cellWidth);
+            size_t cellY = floor(y / cellHeight);
+            float localX = (x / cellWidth) - cellX;
+            float localY = (y / cellHeight) - cellY;
+
+            float dotTL = glm::dot(vectorGrid[cellX][cellY], glm::vec2(localX, localY));
+            float dotTR = glm::dot(vectorGrid[cellX+1][cellY], glm::vec2(localX-1, localY));
+            float dotBL = glm::dot(vectorGrid[cellX][cellY+1], glm::vec2(localX, localY-1));
+            float dotBR = glm::dot(vectorGrid[cellX+1][cellY+1], glm::vec2(localX-1, localY-1));
+        
+            float u = 6*pow(localX, 5) - 15*pow(localX, 4) + 10*pow(localX, 3);
+            float v = 6*pow(localY, 5) - 15*pow(localY, 4) + 10*pow(localY, 3);
+        
+            float nx0 = glm::mix(dotTL, dotTR, u);
+            float nx1 = glm::mix(dotBL, dotBR, u);
+            float nxy = glm::mix(nx0, nx1, v);
+
+            heights.data.push_back(static_cast<uint16_t>((nxy + 1.0f) / 2.0f * UINT16_MAX));
+        }
+    }
 
     return heights;
 }
