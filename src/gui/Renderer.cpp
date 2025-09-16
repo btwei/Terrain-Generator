@@ -54,26 +54,58 @@ void Renderer::update() {
 
         ImGui::InputInt("Size", &selectedSize);
 
-        if(ImGui::BeginCombo("Method", methodNames[selectedMethod])) {
-            for(int i=0; i < 3; i++) {
-                bool isSelected = (selectedMethod == i);
-                if(ImGui::Selectable(methodNames[i], isSelected)) {
-                    selectedMethod = i;
+        if(ImGui::CollapsingHeader("Generation Method")){
+            ImGui::PushStyleColor(ImGuiCol_Header,        ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.65f, 0.65f, 0.70f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderActive,  ImVec4(0.75f, 0.75f, 0.80f, 1.0f));
+
+            ImGui::PushStyleColor(ImGuiCol_FrameBg,        ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.65f, 0.65f, 0.70f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive,  ImVec4(0.75f, 0.75f, 0.80f, 1.0f));
+
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.45, 0.45, 0.45, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.37f, 0.33f, 0.40f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.35f, 0.35f, 0.35f, 1.0f));
+
+            ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.70f, 0.70f, 0.75f, 1.0f));
+
+            if(ImGui::BeginCombo("Method", methodNames[selectedMethod])) {
+                for(int i=0; i < 3; i++) {
+                    bool isSelected = (selectedMethod == i);
+                    if(ImGui::Selectable(methodNames[i], isSelected)) {
+                        selectedMethod = i;
+                    }
+                    if(isSelected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
                 }
-                if(isSelected) {
-                    ImGui::SetItemDefaultFocus();
-                }
+                ImGui::EndCombo();
             }
-            ImGui::EndCombo();
+
+            if(selectedMethod == 0) {
+                ImGui::Indent();
+                if(ImGui::CollapsingHeader("Perlin Noise Parameters")) {
+                    ImGui::InputInt("Grid Size", &perlinGridSize);
+                }
+                ImGui::Unindent();
+            } else if(selectedMethod == 1) {
+
+            } else if(selectedMethod == 2) {
+
+            }
+
+            ImGui::PopStyleColor(10);
         }
 
-        if(selectedMethod == 0) {
+        if(ImGui::CollapsingHeader("Post Processing Filters")) {
+            ImGui::Indent();
 
-        } else if(selectedMethod == 1) {
-
-        } else if(selectedMethod == 2) {
-
+            ImGui::Unindent();
         }
+
+        ImGui::Spacing();
+
+        bool shouldGenerate = ImGui::Button("Generate");
         
     ImGui::End();
 
@@ -91,6 +123,38 @@ void Renderer::update() {
     ImGui::End();
     ImGui::PopStyleVar();
 
+    // Handle Terrain Generation
+    if(shouldGenerate) {
+        if(selectedMethod == 0) {
+            _currentHeightmap = generatePerlinNoiseHeightmap(selectedSize, selectedSize, perlinGridSize);
+            
+            // Convert from heightmap to mesh
+            Mesh mesh = convertHeightmapToMesh(_currentHeightmap);
+
+            // Cleanup old index and vertex buffers
+            // Quick and SUBOPTIMAL: use vkDeviceWaitIdle before destroying old buffer
+            // @todo: Use a fence and polling to trigger deletion of old resources
+            vkDeviceWaitIdle(_device);
+            vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.allocation);
+            vmaDestroyBuffer(_allocator, _indexBuffer.buffer, _indexBuffer.allocation);
+
+            // Upload index and vertex buffers 
+            _vertexBuffer = uploadToNewDeviceLocalBuffer(mesh.interleavedAttributes.size() * sizeof(Attributes), mesh.interleavedAttributes.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+
+            // Reset view parameters, in case user gets lost or something
+            float distance = 4.0f;
+            float yaw = glm::radians(45.0f);
+            float pitch = glm::radians(30.0f);
+            glm::vec2 panOffset = glm::vec2(0.0f, 0.0f);
+        } else if(selectedMethod == 1) {
+
+        } else if(selectedMethod == 2) {
+
+        }
+    }
+
+    // Handle Mouse IO
     if(viewportHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         ImVec2 delta = ImGui::GetIO().MouseDelta;
 
