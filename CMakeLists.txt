@@ -37,6 +37,9 @@ target_include_directories(VulkanMemoryAllocator INTERFACE ${CMAKE_SOURCE_DIR}/e
 add_library(glm INTERFACE)
 target_include_directories(glm INTERFACE external/glm)
 
+# Add nativefiledialog-extended as a subdirectory
+add_subdirectory(external/nativefiledialog-extended)
+
 add_subdirectory(src/core)
 add_subdirectory(src/cli)
 add_subdirectory(src/gui)

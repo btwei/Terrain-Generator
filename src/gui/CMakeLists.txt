@@ -63,4 +63,5 @@ target_link_libraries(terrainGen-gui PRIVATE
     imgui
     VulkanMemoryAllocator
     glm
+    nfd
 )
