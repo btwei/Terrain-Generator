@@ -2,6 +2,7 @@
 
 [[vk::binding(0, 0)]] cbuffer CameraData {
     float4x4 u_MVP;
+    float4x4 u_normalMatrix;
 };
 
 struct VSInput {
@@ -21,7 +22,7 @@ VSOutput mainVert(VSInput input) {
     VSOutput output;
 
     output.position = mul(u_MVP, float4(input.position, 1.0));
-    output.normal = input.normal;
+    output.normal = float3(mul(u_normalMatrix, float4(input.normal, 1.0)).xyz);
     output.texCoord = input.texCoord;
 
     return output;
@@ -29,5 +30,11 @@ VSOutput mainVert(VSInput input) {
 
 [shader("fragment")]
 float4 mainFrag(VSOutput input) : SV_Target {
-    return float4(0.0, 1.0, 0.0, 1.0);
+    float ambient = 0.1;
+    float3 direction = normalize(float3(0.5, 1.0, 0.5));
+    float intensity = 0.9;
+
+    float3 lambert = max(0.0, dot(input.normal, direction)) * intensity + float3(ambient);
+
+    return float4(lambert, 1.0);
 }

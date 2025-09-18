@@ -196,6 +196,8 @@ void Renderer::update() {
 
     glm::mat4 MVP = P_matrix * V_matrix * M_matrix;
     memcpy(getCurrentFrame().uboData, &MVP, sizeof(glm::mat4));
+
+    memcpy(static_cast<char*>(getCurrentFrame().uboData) + sizeof(glm::mat4), &normal_matrix, sizeof(glm::mat4));
 }
 
 // @todo: Move some of these functions to a separate helper function header + implementation file
@@ -488,7 +490,7 @@ void Renderer::initVulkan() {
 
         if(vkAllocateDescriptorSets(_device, &descriptorAllocInfo, &_frames[i]._descriptorSet) != VK_SUCCESS) throw std::runtime_error("Failed to allocate descriptor set!");
 
-        _frames[i]._uboBuffer = createBuffer(sizeof(glm::mat4), VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+        _frames[i]._uboBuffer = createBuffer(2 * sizeof(glm::mat4), VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
         vmaMapMemory(_allocator, _frames[i]._uboBuffer.allocation, &_frames[i].uboData);
 
         VkDescriptorBufferInfo bufferInfo{};
@@ -805,6 +807,8 @@ void Renderer::initDefaultGeometry() {
     // Set the model matrix once; no need to update it later
     // All models will start from X, Y ∈ [0, 1]
     M_matrix = glm::translate(glm::mat4(1.0f), translation) * swapYZ;
+
+    normal_matrix = glm::transpose(glm::inverse(M_matrix));
 }
 
 void Renderer::generateUserGeometry() {
@@ -1070,13 +1074,13 @@ void Renderer::createGraphicsPipeline() {
     attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[0].offset = 0;
 
-    // float3 / vec3 for position - x, y, z
+    // float3 / vec3 for normal - x, y, z
     attributeDescriptions[1].location = 1;
     attributeDescriptions[1].binding = 0;
     attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[1].offset = 3 * sizeof(float);
 
-    // float3 / vec3 for position - x, y, z
+    // float2 / vec2 for uv - u, v
     attributeDescriptions[2].location = 2;
     attributeDescriptions[2].binding = 0;
     attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;

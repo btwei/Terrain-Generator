@@ -122,21 +122,21 @@ Mesh convertHeightmapToMesh(const Heightmap& heightmap) {
     }
 
     // Compute Normals
-    for(size_t y=0; y < height - 1; y++) {
-        for(size_t x=0; x < width - 1; x++) {
+    for(size_t y=0; y < height; y++) {
+        for(size_t x=0; x < width; x++) {
             // Calculate dx and dy, minding heightmap boundary conditions
-            float dx = (x == 0) ? heightmap.data[y*height+x+1] - heightmap.data[y*height+x]
-                     : (x == width - 1) ? heightmap.data[y*height+x] - heightmap.data[y*height+x-1]
-                     : (heightmap.data[y*height+x+1] - heightmap.data[y*height+x-1]) * 0.5;
-            float dy = (y == 0) ? heightmap.data[(y+1)*height+x] - heightmap.data[y*height+x]
-                     : (y == height - 1) ? heightmap.data[y*height+x] - heightmap.data[(y-1)*height+x]
-                     : (heightmap.data[(y+1)*height+x] - heightmap.data[(y-1)*height+x]) * 0.5;
+            glm::vec3 RL = (x == 0) ? glm::vec3(1, 0, heightmap.data[y*height+x+1] - heightmap.data[y*height+x])
+                     : (x == width) ? glm::vec3(1, 0, heightmap.data[y*height+x] - heightmap.data[y*height+x-1])
+                     : glm::vec3(2.0f / width, 0.0f, positions[3*y*width+3*(x+1)+2] - positions[3*y*width+3*(x-1)+2]);
+            glm::vec3 UD = (y == 0) ? glm::vec3(0, -1, heightmap.data[(y+1)*height+x] - heightmap.data[y*height+x])
+                     : (y == height) ? glm::vec3(0, -1, heightmap.data[y*height+x] - heightmap.data[(y-1)*height+x])
+                     : glm::vec3(0.0f, 2.0f / height, positions[3*(y+1)*width+3*x+2] - positions[3*(y-1)*width+3*x+2]);
 
-            float magnitude = dx*dx + dy*dy + 1;
+            glm::vec3 normal = glm::normalize(glm::cross(RL, UD));
 
-            normals.push_back(dx/magnitude);
-            normals.push_back(-1.0f/magnitude);
-            normals.push_back(dy/magnitude);
+            normals.push_back(normal.x);
+            normals.push_back(normal.y);
+            normals.push_back(normal.z);
         }
     }
 

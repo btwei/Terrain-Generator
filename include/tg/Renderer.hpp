@@ -122,6 +122,7 @@ private:
     glm::mat4 M_matrix;
     glm::mat4 V_matrix;
     glm::mat4 P_matrix;
+    glm::mat4 normal_matrix;
 
     glm::vec3 target = glm::vec3(0.0f);
     float distance = 4.0f;
