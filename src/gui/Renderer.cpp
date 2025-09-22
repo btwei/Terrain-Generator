@@ -89,7 +89,11 @@ void Renderer::update() {
                 }
                 ImGui::Unindent();
             } else if(selectedMethod == 1) {
-
+                ImGui::Indent();
+                if(ImGui::CollapsingHeader("Diamond Square Parameters")) {
+                    ImGui::InputFloat("Roughness", &diamondSquareRoughness);
+                }
+                ImGui::Unindent();
             } else if(selectedMethod == 2) {
 
             }
@@ -148,7 +152,23 @@ void Renderer::update() {
             float pitch = glm::radians(30.0f);
             glm::vec2 panOffset = glm::vec2(0.0f, 0.0f);
         } else if(selectedMethod == 1) {
+            _currentHeightmap = generateDiamondSquareHeightmap(selectedSize, selectedSize, diamondSquareRoughness);
 
+            Mesh mesh = convertHeightmapToMesh(_currentHeightmap);
+
+            vkDeviceWaitIdle(_device);
+            vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.allocation);
+            vmaDestroyBuffer(_allocator, _indexBuffer.buffer, _indexBuffer.allocation);
+
+            // Upload index and vertex buffers 
+            _vertexBuffer = uploadToNewDeviceLocalBuffer(mesh.interleavedAttributes.size() * sizeof(Attributes), mesh.interleavedAttributes.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+            _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+
+            // Reset view parameters, in case user gets lost or something
+            float distance = 4.0f;
+            float yaw = glm::radians(45.0f);
+            float pitch = glm::radians(30.0f);
+            glm::vec2 panOffset = glm::vec2(0.0f, 0.0f);
         } else if(selectedMethod == 2) {
 
         }

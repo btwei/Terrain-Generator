@@ -80,6 +80,101 @@ Heightmap generatePerlinNoiseHeightmap(size_t width, size_t height, size_t gridR
     return heights;
 }
 
+Heightmap generateDiamondSquareHeightmap(size_t width, size_t height, float roughness) {
+    Heightmap heights;
+    heights.width = width;
+    heights.height = height;
+
+    // Diamond-Square requires a gridsize of 2^n + 1
+    size_t dim = width > height ? width : height;
+    dim = std::bit_ceil(dim) + 1;
+    std::vector<std::vector<float>> diamondSquareGrid(dim, std::vector<float>(dim, 0));
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
+
+    diamondSquareGrid[0][0] = dis(gen);
+    diamondSquareGrid[0][dim-1] = dis(gen);
+    diamondSquareGrid[dim-1][0] = dis(gen);
+    diamondSquareGrid[dim-1][dim-1] = dis(gen);
+
+    float maxValue = std::max({diamondSquareGrid[0][0],
+                               diamondSquareGrid[0][dim-1],
+                               diamondSquareGrid[dim-1][0],
+                               diamondSquareGrid[dim-1][dim-1]});
+
+    float minValue = std::min({diamondSquareGrid[0][0],
+                               diamondSquareGrid[0][dim-1],
+                               diamondSquareGrid[dim-1][0],
+                               diamondSquareGrid[dim-1][dim-1]});
+
+    size_t stepSize = dim - 1;
+    float scale = 1.0f * roughness;
+
+    while(stepSize > 1) {
+
+        // Diamond step
+        for(size_t x = 0; x < dim - 1; x += stepSize) {
+            for(size_t y = 0; y < dim - 1; y += stepSize) {
+                float average = (diamondSquareGrid[y][x] +
+                                 diamondSquareGrid[y+stepSize][x] +
+                                 diamondSquareGrid[y][x+stepSize] +
+                                 diamondSquareGrid[y+stepSize][x+stepSize]) / 4.0f;
+
+                // Random values from dis(gen) can cause wandering, so we need to normalize at the end
+                diamondSquareGrid[y + stepSize / 2][x + stepSize / 2] = average + dis(gen) * scale;
+
+                // Remember max and min values to normalize later
+                if(diamondSquareGrid[y + stepSize / 2][x + stepSize / 2] > maxValue) maxValue = diamondSquareGrid[y + stepSize / 2][x + stepSize / 2];
+                if(diamondSquareGrid[y + stepSize / 2][x + stepSize / 2] < minValue) minValue = diamondSquareGrid[y + stepSize / 2][x + stepSize / 2];
+            }
+        }
+
+        // Square step
+        for(size_t x = 0; x < dim - 1; x += stepSize / 2) {
+            for(size_t y = (x + stepSize / 2) % stepSize; y < dim - 1; y += stepSize) {
+                float total = 0.0f;
+                size_t count = 0;
+
+                if(static_cast<int>(x) - static_cast<int>(stepSize / 2) >= 0) {
+                    total += diamondSquareGrid[y][x - stepSize / 2]; count++;
+                }
+                if(static_cast<int>(x) + static_cast<int>(stepSize / 2) < dim) {
+                    total += diamondSquareGrid[y][x + stepSize / 2]; count++;
+                }
+                if(static_cast<int>(y) - static_cast<int>(stepSize / 2) >= 0) {
+                    total += diamondSquareGrid[y - stepSize / 2][x]; count++;
+                }
+                if(static_cast<int>(y) + static_cast<int>(stepSize / 2) < dim) {
+                    total += diamondSquareGrid[y + stepSize / 2][x]; count++;
+                }
+
+                float average = total / count;
+                diamondSquareGrid[y][x] = average + dis(gen) * scale;
+
+                if(diamondSquareGrid[y][x] > maxValue) maxValue = diamondSquareGrid[y][x];
+                if(diamondSquareGrid[y][x] < minValue) minValue = diamondSquareGrid[y][x];
+            }
+        }
+
+        stepSize /= 2;
+        scale *= roughness;
+    }
+
+    // Clip our larger grid to the size requested
+    float range = maxValue - minValue;
+
+    for(size_t y=0; y < height; y++) {
+        for(size_t x=0; x < width; x++) {
+            heights.data.push_back((diamondSquareGrid[y][x] - minValue) / range * UINT16_MAX);
+        }
+    }
+
+    return heights;
+}
+
 Mesh convertHeightmapToMesh(const Heightmap& heightmap) {
     Mesh mesh;
 

@@ -116,7 +116,8 @@ private:
 
     int selectedSize = 512;
     int selectedMethod = 0;
-    int perlinGridSize = 32;
+    int perlinGridSize = 4;
+    float diamondSquareRoughness = 0.5f;
     const char* methodNames[3] = { "Perlin Noise", "Diamond-Square", "Fault Formation" };
 
     glm::mat4 M_matrix;
