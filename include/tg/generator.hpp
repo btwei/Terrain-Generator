@@ -31,6 +31,8 @@ Heightmap generatePerlinNoiseHeightmap(size_t width, size_t height, size_t gridR
 
 Heightmap generateDiamondSquareHeightmap(size_t width, size_t height, float roughness);
 
+Heightmap generateFaultingHeightmap(size_t width, size_t height, int iterations);
+
 Mesh convertHeightmapToMesh(const Heightmap& heightmap);
 
 void exportHeightmapAsR16(Heightmap& heightmap, const std::string& filepath);

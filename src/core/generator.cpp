@@ -175,6 +175,59 @@ Heightmap generateDiamondSquareHeightmap(size_t width, size_t height, float roug
     return heights;
 }
 
+Heightmap generateFaultingHeightmap(size_t width, size_t height, int iterations) {
+    Heightmap heights;
+    heights.width = width;
+    heights.height = height;
+
+    std::vector<std::vector<float>> unnormalizedHeights(height, std::vector<float>(width, 0.0f));
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    std::uniform_int_distribution<size_t> widthDistribution(0, width);
+    std::uniform_int_distribution<size_t> heightDistribution(0, height);
+
+    std::uniform_real_distribution<float> angleDistribution(0.0f, glm::two_pi<float>());
+
+    for(int i=0; i < iterations; i++) {
+        glm::vec3 point(widthDistribution(gen), heightDistribution(gen), 0.0f);
+        float angle = angleDistribution(gen);
+        glm::vec3 normal(cos(angle), sin(angle), 0);
+
+        float displacement = 1.0f;
+
+        for(int y=0; y<height; y++) {
+            for(int x=0; x<width; x++){
+                if(glm::dot(glm::vec3(x, y, 0.0f)-point, normal) >= 0.0f){
+                    unnormalizedHeights[y][x] += displacement;
+                } else {
+                    unnormalizedHeights[y][x] -= displacement;
+                }
+            }
+        }
+    }
+
+    float maxHeight = 0.0f;
+    float minHeight = 0.0f;
+    // Definitely better perfomance to check min and max once per height separately here
+    for(int y=0; y<height; y++) {
+        for(int x=0; x<width; x++) {
+            if(unnormalizedHeights[y][x] > maxHeight) maxHeight = unnormalizedHeights[y][x];
+            if(unnormalizedHeights[y][x] < minHeight) minHeight = unnormalizedHeights[y][x];
+        }
+    }
+
+    // Populate heights with normalized height values [0 - UINT16_MAX]
+    for(int y=0; y<height; y++) {
+        for(int x=0; x<width; x++) {
+            heights.data.push_back((unnormalizedHeights[y][x] - minHeight) / (maxHeight-minHeight) * UINT16_MAX);
+        }
+    }
+
+    return heights;
+}
+
 Mesh convertHeightmapToMesh(const Heightmap& heightmap) {
     Mesh mesh;
 

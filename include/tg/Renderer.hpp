@@ -118,6 +118,7 @@ private:
     int selectedMethod = 0;
     int perlinGridSize = 4;
     float diamondSquareRoughness = 0.5f;
+    int faultingIterations = 10;
     const char* methodNames[3] = { "Perlin Noise", "Diamond-Square", "Fault Formation" };
 
     glm::mat4 M_matrix;
