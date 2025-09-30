@@ -43,9 +43,43 @@ void Renderer::update() {
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
+    float menuBarHeight = 0.0f;
+    if(ImGui::BeginMainMenuBar()) {
+        menuBarHeight = ImGui::GetFrameHeight();
+        if(ImGui::BeginMenu("File")) {
+            if(ImGui::MenuItem("Export as .R16")) {
+
+            }
+            if(ImGui::MenuItem("Export as OBJ")) {
+
+            }
+            if(ImGui::MenuItem("Quit")) {
+                _isRunning = false;
+            }
+        ImGui::EndMenu();
+        }
+        if(ImGui::BeginMenu("View")) {
+            if(ImGui::MenuItem("Reset")) {
+                distance = 4.0f;
+                yaw = glm::radians(45.0f);
+                pitch = glm::radians(30.0f);
+                panOffset = glm::vec2(0.0f, 0.0f);
+            }
+        ImGui::EndMenu();
+        }
+        if(ImGui::BeginMenu("Help")) {
+            if(ImGui::MenuItem("About")) {
+                ImGui::OpenPopup("AboutPopup");
+            }
+            ImGui::EndMenu();
+        }
+
+        ImGui::EndMainMenuBar();
+    }
+
     ImGuiWindowFlags panelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar;
 
-    ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2(0, menuBarHeight), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2((ImGui::GetIO().DisplaySize.x * ImGui::GetIO().DisplayFramebufferScale.x - _mainViewportWidth) / ImGui::GetIO().DisplayFramebufferScale.x, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
 
     ImGui::Begin("Left Panel", nullptr, panelFlags);
@@ -116,7 +150,7 @@ void Renderer::update() {
         
     ImGui::End();
 
-    ImGui::SetNextWindowPos(ImVec2((ImGui::GetIO().DisplaySize.x * ImGui::GetIO().DisplayFramebufferScale.x - _mainViewportWidth) / ImGui::GetIO().DisplayFramebufferScale.x, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2((ImGui::GetIO().DisplaySize.x * ImGui::GetIO().DisplayFramebufferScale.x - _mainViewportWidth) / ImGui::GetIO().DisplayFramebufferScale.x, menuBarHeight), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(_mainViewportWidth / ImGui::GetIO().DisplayFramebufferScale.x, ImGui::GetIO().DisplaySize.y), ImGuiCond_Always);
 
     panelFlags |= ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
@@ -129,6 +163,102 @@ void Renderer::update() {
         viewportHovered = ImGui::IsWindowHovered();
     ImGui::End();
     ImGui::PopStyleVar();
+
+    if(ImGui::BeginPopupModal("AboutPopup", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("terrainGenerator");
+        ImGui::Separator();
+        ImGui::TextWrapped("Version 1.0.0\n(c) 2025 Benjamin Wei\n");
+        ImGui::Spacing();
+        ImGui::TextWrapped("This application uses third-party libraries:");
+        ImGui::BulletText("Dear ImGui (MIT)");
+        ImGui::BulletText("GLM (MIT)");
+        ImGui::BulletText("nativefiledialog-extended (zlib)");
+        ImGui::BulletText("SDL (zlib)");
+        ImGui::BulletText("vk-bootstrap (MIT)");
+        ImGui::BulletText("Vulkan Memory Allocator (MIT)");
+        ImGui::Spacing();
+
+        ImGui::Separator();
+        ImGui::Text("Licenses:");
+        ImGui::BeginChild("LicensesScroll", ImVec2(500, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+
+        // --- Dear ImGui License ---
+        ImGui::Text("Dear ImGui - MIT License");
+        ImGui::Separator();
+        ImGui::TextWrapped(
+            "Copyright (c) 2014-2025 Omar Cornut\n"
+            "Permission is hereby granted, free of charge, to any person obtaining a copy "
+            "of this software and associated documentation files (the \"Software\"), to deal "
+            "in the Software without restriction, including without limitation the rights "
+            "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell "
+            "copies of the Software, and to permit persons to whom the Software is "
+            "furnished to do so, subject to the following conditions:\n\n"
+            "The above copyright notice and this permission notice shall be included in all "
+            "copies or substantial portions of the Software.\n\n"
+            "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND..."
+        );
+
+        ImGui::Spacing();
+
+        // --- GLM License (MIT) ---
+        ImGui::Text("GLM - MIT License");
+        ImGui::Separator();
+        ImGui::TextWrapped(
+            "Copyright (c) 2005-2025 G-Truc Creation\n"
+            "Permission is hereby granted, free of charge, to any person obtaining a copy..."
+        );
+
+        ImGui::Spacing();
+
+        // --- nativefiledialog-extended License (zlib) ---
+        ImGui::Text("nativefiledialog-extended - zlib License");
+        ImGui::Separator();
+        ImGui::TextWrapped(
+            "This software is provided 'as-is', without any express or implied warranty. "
+            "In no event will the authors be held liable for any damages arising from the "
+            "use of this software...\n"
+            "Permission is granted to anyone to use this software for any purpose, including "
+            "commercial applications, and to alter it and redistribute it freely..."
+        );
+
+        ImGui::Spacing();
+
+        // --- SDL License (zlib) ---
+        ImGui::Text("SDL - zlib License");
+        ImGui::Separator();
+        ImGui::TextWrapped(
+            "This software is provided 'as-is', without any express or implied warranty... "
+            "Permission is granted to anyone to use this software for any purpose..."
+        );
+
+        ImGui::Spacing();
+
+        // --- vk-bootstrap License (MIT) ---
+        ImGui::Text("vk-bootstrap - MIT License");
+        ImGui::Separator();
+        ImGui::TextWrapped(
+            "Copyright (c) 2019-2025 The vk-bootstrap Authors\n"
+            "Permission is hereby granted, free of charge, to any person obtaining a copy..."
+        );
+
+        ImGui::Spacing();
+
+        // --- Vulkan Memory Allocator License (MIT) ---
+        ImGui::Text("Vulkan Memory Allocator - MIT License");
+        ImGui::Separator();
+        ImGui::TextWrapped(
+            "Copyright (c) 2017-2025 Advanced Micro Devices, Inc.\n"
+            "Permission is hereby granted, free of charge, to any person obtaining a copy..."
+        );
+
+        ImGui::EndChild();
+
+        ImGui::Spacing();
+        if (ImGui::Button("Close")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 
     // Handle Terrain Generation
     if(shouldGenerate) {
@@ -150,10 +280,10 @@ void Renderer::update() {
             _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
             // Reset view parameters, in case user gets lost or something
-            float distance = 4.0f;
-            float yaw = glm::radians(45.0f);
-            float pitch = glm::radians(30.0f);
-            glm::vec2 panOffset = glm::vec2(0.0f, 0.0f);
+            distance = 4.0f;
+            yaw = glm::radians(45.0f);
+            pitch = glm::radians(30.0f);
+            panOffset = glm::vec2(0.0f, 0.0f);
         } else if(selectedMethod == 1) {
             _currentHeightmap = generateDiamondSquareHeightmap(selectedSize, selectedSize, diamondSquareRoughness);
 
@@ -168,10 +298,10 @@ void Renderer::update() {
             _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
             // Reset view parameters, in case user gets lost or something
-            float distance = 4.0f;
-            float yaw = glm::radians(45.0f);
-            float pitch = glm::radians(30.0f);
-            glm::vec2 panOffset = glm::vec2(0.0f, 0.0f);
+            distance = 4.0f;
+            yaw = glm::radians(45.0f);
+            pitch = glm::radians(30.0f);
+            panOffset = glm::vec2(0.0f, 0.0f);
         } else if(selectedMethod == 2) {
             _currentHeightmap = generateFaultingHeightmap(selectedSize, selectedSize, faultingIterations);
 
@@ -186,10 +316,10 @@ void Renderer::update() {
             _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
             // Reset view parameters, in case user gets lost or something
-            float distance = 4.0f;
-            float yaw = glm::radians(45.0f);
-            float pitch = glm::radians(30.0f);
-            glm::vec2 panOffset = glm::vec2(0.0f, 0.0f);
+            distance = 4.0f;
+            yaw = glm::radians(45.0f);
+            pitch = glm::radians(30.0f);
+            panOffset = glm::vec2(0.0f, 0.0f);
         }
     }
 
@@ -339,26 +469,29 @@ void Renderer::cleanup() {
     // Cleanup VMA
     vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.allocation);
     vmaDestroyBuffer(_allocator, _indexBuffer.buffer, _indexBuffer.allocation);
-    vmaDestroyAllocator(_allocator);
-
-    // Cleanup ImGui
-    ImGui_ImplVulkan_Shutdown();
-    ImGui_ImplSDL3_Shutdown();
-    ImGui::DestroyContext();
 
     for(int i=0; i < NUM_FRAME_OVERLAP; i++) {
+        vmaUnmapMemory(_allocator, _frames[i]._uboBuffer.allocation);
         vmaDestroyBuffer(_allocator, _frames[i]._uboBuffer.buffer, _frames[i]._uboBuffer.allocation);
-        vkFreeDescriptorSets(_device, _descriptorPool, 1, &_frames[i]._descriptorSet);
+        //vkFreeDescriptorSets(_device, _descriptorPool, 1, &_frames[i]._descriptorSet);
         vkDestroyCommandPool(_device, _frames[i]._commandPool, nullptr);
         vkDestroyFence(_device, _frames[i].renderFence, nullptr);
         vkDestroySemaphore(_device, _frames[i].imageAcquireToRenderSemaphore, nullptr);
     }
+
+    vmaDestroyAllocator(_allocator);
 
     for(int i=0; i < _renderToPresentSemaphores.size(); i++) {
         vkDestroySemaphore(_device, _renderToPresentSemaphores[i], nullptr);
     }
 
     destroyViewportResources();
+
+    // Cleanup ImGui
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+
     destroySwapchain();
 
     vkDestroyDescriptorPool(_device, _descriptorPool, nullptr);
