@@ -120,6 +120,11 @@ private:
     float diamondSquareRoughness = 0.5f;
     int faultingIterations = 10;
     const char* methodNames[3] = { "Perlin Noise", "Diamond-Square", "Fault Formation" };
+    
+    bool shouldThermalWeather = false;
+    float thermalThreshold = 0.01;
+    int thermalIterations = 10;
+    float thermalConstant = 0.25;
 
     glm::mat4 M_matrix;
     glm::mat4 V_matrix;

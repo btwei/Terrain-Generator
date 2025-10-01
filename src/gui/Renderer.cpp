@@ -8,6 +8,7 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
+#include <nfd.hpp>
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_vulkan.h>
 #include <VkBootstrap.h>
@@ -133,14 +134,22 @@ void Renderer::update() {
                 if(ImGui::CollapsingHeader("Faulting Parameters")){
                     ImGui::InputInt("Iterations", &faultingIterations);
                 }
+                ImGui::Unindent();
             }
 
             ImGui::PopStyleColor(10);
         }
 
         if(ImGui::CollapsingHeader("Post Processing Filters")) {
+            
+            ImGui::Checkbox("Thermal Weathering", &shouldThermalWeather);
             ImGui::Indent();
-
+                if(ImGui::CollapsingHeader("Thermal Parameters")) {
+                    ImGui::InputInt("Iterations", &thermalIterations);
+                    ImGui::InputFloat("Talus Slope", &thermalThreshold);
+                    ImGui::InputFloat("Scaling constant", &thermalConstant);
+                    thermalConstant = glm::clamp(thermalConstant, 0.0f, 1.0f);
+                }
             ImGui::Unindent();
         }
 
@@ -164,7 +173,7 @@ void Renderer::update() {
     ImGui::End();
     ImGui::PopStyleVar();
 
-    if(ImGui::BeginPopupModal("AboutPopup", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if(ImGui::BeginPopupModal("AboutPopup")) {
         ImGui::Text("terrainGenerator");
         ImGui::Separator();
         ImGui::TextWrapped("Version 1.0.0\n(c) 2025 Benjamin Wei\n");
@@ -264,63 +273,31 @@ void Renderer::update() {
     if(shouldGenerate) {
         if(selectedMethod == 0) {
             _currentHeightmap = generatePerlinNoiseHeightmap(selectedSize, selectedSize, perlinGridSize);
-            
-            // Convert from heightmap to mesh
-            Mesh mesh = convertHeightmapToMesh(_currentHeightmap);
-
-            // Cleanup old index and vertex buffers
-            // Quick and SUBOPTIMAL: use vkDeviceWaitIdle before destroying old buffer
-            // @todo: Use a fence and polling to trigger deletion of old resources
-            vkDeviceWaitIdle(_device);
-            vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.allocation);
-            vmaDestroyBuffer(_allocator, _indexBuffer.buffer, _indexBuffer.allocation);
-
-            // Upload index and vertex buffers 
-            _vertexBuffer = uploadToNewDeviceLocalBuffer(mesh.interleavedAttributes.size() * sizeof(Attributes), mesh.interleavedAttributes.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-            _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
-            // Reset view parameters, in case user gets lost or something
-            distance = 4.0f;
-            yaw = glm::radians(45.0f);
-            pitch = glm::radians(30.0f);
-            panOffset = glm::vec2(0.0f, 0.0f);
         } else if(selectedMethod == 1) {
             _currentHeightmap = generateDiamondSquareHeightmap(selectedSize, selectedSize, diamondSquareRoughness);
-
-            Mesh mesh = convertHeightmapToMesh(_currentHeightmap);
-
-            vkDeviceWaitIdle(_device);
-            vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.allocation);
-            vmaDestroyBuffer(_allocator, _indexBuffer.buffer, _indexBuffer.allocation);
-
-            // Upload index and vertex buffers 
-            _vertexBuffer = uploadToNewDeviceLocalBuffer(mesh.interleavedAttributes.size() * sizeof(Attributes), mesh.interleavedAttributes.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-            _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
-            // Reset view parameters, in case user gets lost or something
-            distance = 4.0f;
-            yaw = glm::radians(45.0f);
-            pitch = glm::radians(30.0f);
-            panOffset = glm::vec2(0.0f, 0.0f);
         } else if(selectedMethod == 2) {
             _currentHeightmap = generateFaultingHeightmap(selectedSize, selectedSize, faultingIterations);
-
-            Mesh mesh = convertHeightmapToMesh(_currentHeightmap);
-
-            vkDeviceWaitIdle(_device);
-            vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.allocation);
-            vmaDestroyBuffer(_allocator, _indexBuffer.buffer, _indexBuffer.allocation);
-
-            // Upload index and vertex buffers 
-            _vertexBuffer = uploadToNewDeviceLocalBuffer(mesh.interleavedAttributes.size() * sizeof(Attributes), mesh.interleavedAttributes.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-            _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
-            // Reset view parameters, in case user gets lost or something
-            distance = 4.0f;
-            yaw = glm::radians(45.0f);
-            pitch = glm::radians(30.0f);
-            panOffset = glm::vec2(0.0f, 0.0f);
         }
+
+        if(shouldThermalWeather) {
+            applyThermalWeathering(_currentHeightmap, thermalThreshold, thermalConstant, thermalIterations);
+        }
+
+        Mesh mesh = convertHeightmapToMesh(_currentHeightmap);
+
+        vkDeviceWaitIdle(_device);
+        vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.allocation);
+        vmaDestroyBuffer(_allocator, _indexBuffer.buffer, _indexBuffer.allocation);
+
+        // Upload index and vertex buffers 
+        _vertexBuffer = uploadToNewDeviceLocalBuffer(mesh.interleavedAttributes.size() * sizeof(Attributes), mesh.interleavedAttributes.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        _indexBuffer = uploadToNewDeviceLocalBuffer(mesh.indices.size() * sizeof(uint32_t), mesh.indices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+
+        // Reset view parameters, in case user gets lost or something
+        distance = 4.0f;
+        yaw = glm::radians(45.0f);
+        pitch = glm::radians(30.0f);
+        panOffset = glm::vec2(0.0f, 0.0f);
     }
 
     // Handle Mouse IO

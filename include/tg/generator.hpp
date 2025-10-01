@@ -33,6 +33,8 @@ Heightmap generateDiamondSquareHeightmap(size_t width, size_t height, float roug
 
 Heightmap generateFaultingHeightmap(size_t width, size_t height, int iterations);
 
+void applyThermalWeathering(Heightmap& heightmap, float threshold, float c, int iterations);
+
 Mesh convertHeightmapToMesh(const Heightmap& heightmap);
 
 void exportHeightmapAsR16(Heightmap& heightmap, const std::string& filepath);

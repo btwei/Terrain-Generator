@@ -228,6 +228,65 @@ Heightmap generateFaultingHeightmap(size_t width, size_t height, int iterations)
     return heights;
 }
 
+void applyThermalWeathering(Heightmap& heightmap, float threshold, float c, int iterations) {
+    // Convert heightmap uint16_t to floats
+    std::vector<std::vector<float>> heights;
+    for(int y=0; y < heightmap.height; y++) {
+        heights.push_back(std::vector<float>());
+        for(int x=0; x < heightmap.width; x++) {
+            heights.back().push_back(static_cast<float>(heightmap.data[y*heightmap.height+x]) / UINT16_MAX);
+        }
+    }
+    
+    for(int i=0; i < iterations; i++) {
+        std::vector<std::vector<float>> delta(heightmap.height, std::vector<float>(heightmap.width, 0.0f));
+
+        for(int y=0; y < heightmap.height; y++) {
+            for(int x=0; x < heightmap.width; x++) {
+                float height = heights[y][x];
+
+                for(int dx = -1; dx < 2; dx++) {
+                    for(int dy = -1; dy < 2; dy++) {
+                        if(dx == 0 && dy == 0) continue;
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        if(0 <= nx && nx < heightmap.width && 0 <= ny && ny < heightmap.height) {
+                            float dh = height - heights[ny][nx];
+                            if(dh > threshold) {
+                                float move = c * (dh - threshold) / 2.0;
+                                delta[y][x] -= move;
+                                delta[ny][nx] += move;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for(int y=0; y < heightmap.height; y++) {
+            for(int x=0; x < heightmap.width; x++) {
+                heights[y][x] += delta[y][x];
+            }
+        }
+    }
+
+    // Normalize and store new values
+    float maxHeight = 0.0f;
+    float minHeight = 0.0f;
+    for(int y=0; y < heightmap.height; y++){
+        for(int x=0; x < heightmap.width; x++) {
+            if(heights[y][x] > maxHeight) maxHeight = heights[y][x];
+            if(heights[y][x] < minHeight) minHeight = heights[y][x];
+        }
+    }
+
+    for(int y=0; y < heightmap.height; y++){
+        for(int x=0; x < heightmap.width; x++) {
+            heightmap.data[y * heightmap.height + x] = (heights[y][x] - minHeight) / (maxHeight-minHeight) * UINT16_MAX;
+        }
+    }
+}
+
 Mesh convertHeightmapToMesh(const Heightmap& heightmap) {
     Mesh mesh;
 
