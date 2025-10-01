@@ -8,7 +8,7 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
-#include <nfd.hpp>
+#include <nfd.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_vulkan.h>
 #include <VkBootstrap.h>
@@ -24,6 +24,8 @@ void Renderer::init(SDL_Window* window, char* argv0) {
     initGUI();
     createViewportResources();
     initDefaultGeometry();
+
+    NFD_Init();
 }
 
 void Renderer::handleEvent(const SDL_Event& event) {
@@ -48,11 +50,31 @@ void Renderer::update() {
     if(ImGui::BeginMainMenuBar()) {
         menuBarHeight = ImGui::GetFrameHeight();
         if(ImGui::BeginMenu("File")) {
-            if(ImGui::MenuItem("Export as .R16")) {
+            if(ImGui::MenuItem("Export as .r16")) {
+                nfdu8char_t *savePath = nullptr;
 
+                nfdsavedialogu8args_t args = {0};
+                args.defaultName = "heightmap.r16";
+
+                nfdresult_t result = NFD_SaveDialogU8_With(&savePath, &args);
+
+                if(result == NFD_OKAY){
+                    exportHeightmapAsR16(_currentHeightmap, savePath);
+                    NFD_FreePathU8(savePath);
+                }
             }
-            if(ImGui::MenuItem("Export as OBJ")) {
+            if(ImGui::MenuItem("Export as .obj")) {
+                                nfdu8char_t *savePath = nullptr;
 
+                nfdsavedialogu8args_t args = {0};
+                args.defaultName = "heightmap.obj";
+                
+                nfdresult_t result = NFD_SaveDialogU8_With(&savePath, &args);
+
+                if(result == NFD_OKAY){
+                    exportHeightmapAsObj(_currentHeightmap, savePath);
+                    NFD_FreePathU8(savePath);
+                }
             }
             if(ImGui::MenuItem("Quit")) {
                 _isRunning = false;
@@ -132,7 +154,7 @@ void Renderer::update() {
             } else if(selectedMethod == 2) {
                 ImGui::Indent();
                 if(ImGui::CollapsingHeader("Faulting Parameters")){
-                    ImGui::InputInt("Iterations", &faultingIterations);
+                    ImGui::InputInt("Iterations##Faulting", &faultingIterations);
                 }
                 ImGui::Unindent();
             }
@@ -141,16 +163,33 @@ void Renderer::update() {
         }
 
         if(ImGui::CollapsingHeader("Post Processing Filters")) {
+
+            ImGui::PushStyleColor(ImGuiCol_Header,        ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.65f, 0.65f, 0.70f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderActive,  ImVec4(0.75f, 0.75f, 0.80f, 1.0f));
+
+            ImGui::PushStyleColor(ImGuiCol_FrameBg,        ImVec4(0.55f, 0.55f, 0.60f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.65f, 0.65f, 0.70f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive,  ImVec4(0.75f, 0.75f, 0.80f, 1.0f));
+
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.45, 0.45, 0.45, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.37f, 0.33f, 0.40f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.35f, 0.35f, 0.35f, 1.0f));
+
+            ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.70f, 0.70f, 0.75f, 1.0f));
+
             
             ImGui::Checkbox("Thermal Weathering", &shouldThermalWeather);
             ImGui::Indent();
                 if(ImGui::CollapsingHeader("Thermal Parameters")) {
-                    ImGui::InputInt("Iterations", &thermalIterations);
+                    ImGui::InputInt("Iterations##Thermal", &thermalIterations);
                     ImGui::InputFloat("Talus Slope", &thermalThreshold);
                     ImGui::InputFloat("Scaling constant", &thermalConstant);
                     thermalConstant = glm::clamp(thermalConstant, 0.0f, 1.0f);
                 }
             ImGui::Unindent();
+
+            ImGui::PopStyleColor(10);
         }
 
         ImGui::Spacing();
@@ -442,6 +481,8 @@ void Renderer::render() {
 
 void Renderer::cleanup() {
     vkDeviceWaitIdle(_device);
+
+    NFD_Quit();
 
     // Cleanup VMA
     vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.allocation);

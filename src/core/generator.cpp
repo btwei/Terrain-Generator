@@ -377,7 +377,27 @@ void exportHeightmapAsR16(Heightmap& heightmap, const std::string& filepath) {
 }
 
 void exportHeightmapAsObj(Heightmap& heightmap, const std::string& filepath) {
-    throw std::runtime_error("OBJ export not implemented yet.");
+    std::ofstream file(filepath, std::ios::binary);
+    if(!file) {
+        throw std::runtime_error("Failed to open file for writing: " + filepath);
+    }
+
+    Mesh mesh = convertHeightmapToMesh(heightmap);
+
+    // Convert mesh to Z-up instead of Y-down
+    for(const auto& attributes : mesh.interleavedAttributes) {
+        file << "v " << attributes.x << " " << attributes.z << " " << attributes.y << "\n";
+    }
+
+    for(int i = 0; i < mesh.indices.size(); i+=3) {
+        file << "f " << mesh.indices[i] + 1 << " "
+                     << mesh.indices[i+1] + 1 << " "
+                     << mesh.indices[i+2] + 1 << "\n";
+    }
+
+    file.close();
+
+    fprintf(stdout, "Heightmap exported as OBJ to %s\n", filepath.c_str());
 }
 
 } // namespace tg
