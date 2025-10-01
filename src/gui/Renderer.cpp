@@ -92,12 +92,17 @@ void Renderer::update() {
         }
         if(ImGui::BeginMenu("Help")) {
             if(ImGui::MenuItem("About")) {
-                ImGui::OpenPopup("AboutPopup");
+                shouldOpenAboutPopup = true;
             }
             ImGui::EndMenu();
         }
 
         ImGui::EndMainMenuBar();
+    }
+
+    if(shouldOpenAboutPopup) {
+        ImGui::OpenPopup("About##Popup");
+        shouldOpenAboutPopup = false;
     }
 
     ImGuiWindowFlags panelFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar;
@@ -212,8 +217,8 @@ void Renderer::update() {
     ImGui::End();
     ImGui::PopStyleVar();
 
-    if(ImGui::BeginPopupModal("AboutPopup")) {
-        ImGui::Text("terrainGenerator");
+    if(ImGui::BeginPopupModal("About##Popup")) {
+        ImGui::Text("Terrain-Generator");
         ImGui::Separator();
         ImGui::TextWrapped("Version 1.0.0\n(c) 2025 Benjamin Wei\n");
         ImGui::Spacing();

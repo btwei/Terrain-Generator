@@ -114,6 +114,7 @@ private:
 
     DataPerFrame& getCurrentFrame() { return _frames[_frameCount % NUM_FRAME_OVERLAP]; }
 
+    bool shouldOpenAboutPopup = false;
     int selectedSize = 512;
     int selectedMethod = 0;
     int perlinGridSize = 4;
