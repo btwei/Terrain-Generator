@@ -1,4 +1,4 @@
-# terrainGenerator
+# Terrain-Generator
 An open-source Vulkan-powered procedural terrain generation tool with multiple algorithms and weathering effects. Useful for generating procedural meshes or UE5 landscape heightmaps.
 
 ## Screenshots
