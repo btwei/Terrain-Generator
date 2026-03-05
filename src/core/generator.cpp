@@ -1,7 +1,9 @@
 #include "tg/generator.hpp"
 
+#include <barrier>
 #include <iostream>
 #include <fstream>
+#include <thread>
 #include <random>
 
 #include <glm/glm.hpp>
@@ -238,6 +240,69 @@ void applyThermalWeathering(Heightmap& heightmap, float threshold, float c, int 
         }
     }
     
+    int numThreads = std::thread::hardware_concurrency();
+    std::barrier sync(numThreads);
+
+    std::vector<std::vector<std::vector<float>>> deltas;
+    deltas.reserve(numThreads);
+    for(int i=0; i < numThreads; i++) {
+        deltas.push_back(std::vector<std::vector<float>>(heightmap.height, std::vector<float>(heightmap.width, 0.0f)));
+    }
+   
+    auto worker = [&](int threadId) {
+        int chunk = (heightmap.height) / numThreads;
+        int rowStart = threadId * chunk;
+        int rowEnd = (threadId == numThreads - 1) ? heightmap.height : rowStart + chunk;
+
+        for(int i=0; i < iterations; i++) {
+            deltas[threadId] = std::vector<std::vector<float>>(heightmap.height, std::vector<float>(heightmap.width, 0.0f));
+            for(int y=rowStart; y < rowEnd; y++) {
+                for(int x=0; x < heightmap.width; x++) {
+                    float height = heights[y][x];
+
+                    for(int dx = -1; dx < 2; dx++) {
+                        for(int dy = -1; dy < 2; dy++) {
+                            if(dx == 0 && dy == 0) continue;
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            if(0 <= nx && nx < heightmap.width && 0 <= ny && ny < heightmap.height) {
+                                float dh = height - heights[ny][nx];
+                                if(dh > threshold) {
+                                    float move = c * (dh - threshold) / 2.0;
+                                    deltas[threadId][y][x] -= move;
+                                    deltas[threadId][ny][nx] += move;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            sync.arrive_and_wait();
+
+            for(int y=rowStart; y < rowEnd; y++) {
+                for(int x=0; x < heightmap.width; x++) {
+                    // Combine deltas from neighbors
+                    float delta = deltas[threadId][y][x];
+
+                    if(y==rowStart && threadId != 0) delta += deltas[threadId - 1][y][x];
+                    if(y==rowEnd && threadId != numThreads - 1) delta += deltas[threadId + 1][y][x];
+
+                    heights[y][x] += delta;
+                }
+            }
+
+            sync.arrive_and_wait();
+        }
+    };
+
+    std::vector<std::thread> threads;
+    for(int t = 0; t < numThreads; t++)
+        threads.emplace_back(worker, t);
+    for(auto& t : threads)
+        t.join();
+
+/*
     for(int i=0; i < iterations; i++) {
         std::vector<std::vector<float>> delta(heightmap.height, std::vector<float>(heightmap.width, 0.0f));
 
@@ -269,6 +334,7 @@ void applyThermalWeathering(Heightmap& heightmap, float threshold, float c, int 
             }
         }
     }
+*/
 
     // Normalize and store new values
     float maxHeight = 0.0f;
